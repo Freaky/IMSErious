@@ -67,7 +67,7 @@ struct OxMessage {
 #[derive(Debug, Default)]
 struct Account {
     last_update: Option<Instant>,
-    pending_messages: u32,
+    pending_messages: bool,
     consecutive_fails: u32,
     executing: bool
 }
@@ -87,23 +87,20 @@ fn spawn_handler() -> mpsc::Sender<OxMessage> {
     tokio::spawn(async move {
         loop {
             tokio::select! {
-                message = rx.recv() => {
-                    if let Some(message) = message {
-                        if let Some(account) = accounts.get_mut(&message.user) {
-                            // in case fdm leaves messages on the server,
-                            // just count notifications instead of unseen
-                            event!(Level::INFO, "New mail for {}", message.user);
-                            account.pending_messages += 1;
-                        }
+                Some(message) = rx.recv() => {
+                    if let Some(account) = accounts.get_mut(&message.user) {
+                        // in case fdm leaves messages on the server,
+                        // just count notifications instead of unseen
+                        event!(Level::INFO, "New mail for {}", message.user);
+                        account.pending_messages = true;
                     }
                 }
-                Some(result) = tasks.next() => {
-                    let (user, status) = result;
+                Some((user, status)) = tasks.next() => {
                     event!(Level::INFO, "Complete for {}: {:?}", user, status);
                     if let Some(account) = accounts.get_mut(&user) {
                         account.last_update = Some(Instant::now());
                         account.executing = false;
-                        account.pending_messages = 0;
+                        account.pending_messages = false;
                     }
                 }
                 _ = tock.tick() => {
@@ -111,7 +108,7 @@ fn spawn_handler() -> mpsc::Sender<OxMessage> {
                         event!(Level::DEBUG, "Tick for {}: {:?}", user, account);
 
                         // Nothing to do
-                        if account.pending_messages == 0 || account.executing {
+                        if !account.pending_messages || account.executing {
                             continue;
                         }
 
