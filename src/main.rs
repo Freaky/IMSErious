@@ -1,35 +1,32 @@
 use axum::{
-    extract::Extension,
-    http::StatusCode,
-    response::IntoResponse,
-    routing::{get, post, put},
-    Json, Router,
+    extract::Extension, http::StatusCode, response::IntoResponse, routing::put, Json, Router,
 };
 use futures::{future::FutureExt, stream::futures_unordered::FuturesUnordered, StreamExt};
 use serde::Deserialize;
-use tokio::{process::Command, sync::mpsc, time};
+use tokio::{process::Command, signal, sync::mpsc, time};
 use tracing::{event, Level};
 
 use std::collections::HashMap;
 use std::net::SocketAddr;
+use std::process::ExitStatus;
 use std::time::{Duration, Instant};
 
 #[tokio::main]
 async fn main() {
     tracing_subscriber::fmt::init();
 
-    let handler = spawn_handler();
-
+    let (tx, task) = spawn_handler();
     let app = Router::new()
         .route("/ox_notify", put(ox_notify))
-        .layer(Extension(handler));
+        .layer(Extension(tx));
 
-    // run our app with hyper
-    // `axum::Server` is a re-export of `hyper::Server`
     let addr = SocketAddr::from(([10, 0, 0, 1], 12525));
     tracing::debug!("listening on {}", addr);
     axum::Server::bind(&addr)
         .serve(app.into_make_service())
+        .with_graceful_shutdown(async move {
+            task.await.unwrap();
+        })
         .await
         .unwrap();
 }
@@ -71,7 +68,7 @@ struct Account {
     executing: bool,
 }
 
-fn spawn_handler() -> mpsc::Sender<OxMessage> {
+fn spawn_handler() -> (mpsc::Sender<OxMessage>, tokio::task::JoinHandle<()>) {
     let (tx, mut rx) = mpsc::channel::<OxMessage>(16);
 
     // hardcode this for now
@@ -82,10 +79,15 @@ fn spawn_handler() -> mpsc::Sender<OxMessage> {
     // Could set a more lenient MissedTickBehaviour
     let mut tock = time::interval(Duration::from_secs(10));
     let mut tasks = FuturesUnordered::new();
+    let mut shutdown = false;
+    let mut terminate = tokio::spawn(shutdown_future());
 
-    tokio::spawn(async move {
-        loop {
+    let task = tokio::spawn(async move {
+        while !shutdown || !tasks.is_empty() {
             tokio::select! {
+                _ = &mut terminate, if !shutdown => {
+                    shutdown = true;
+                }
                 Some(message) = rx.recv() => {
                     if let Some(account) = accounts.get_mut(&message.user) {
                         // in case fdm leaves messages on the server,
@@ -100,11 +102,25 @@ fn spawn_handler() -> mpsc::Sender<OxMessage> {
                         account.last_update = Some(Instant::now());
                         account.executing = false;
                         account.pending_messages = false;
+
+                        // Type inference seems to get a bit wonky here
+                        match status {
+                            Ok(status) => {
+                                if ExitStatus::success(&status) {
+                                    account.consecutive_fails = 0;
+                                } else {
+                                    account.consecutive_fails += 1;
+                                }
+                            }
+                            _ => {
+                                account.consecutive_fails += 1;
+                            }
+                        }
                     }
                 }
-                _ = tock.tick() => {
+                _ = tock.tick(), if !shutdown => {
                     for (user, account) in accounts.iter_mut() {
-                        event!(Level::DEBUG, "Tick for {}: {:?}", user, account);
+                        event!(Level::TRACE, "Tick for {}: {:?}", user, account);
 
                         // Nothing to do
                         if !account.pending_messages || account.executing {
@@ -134,7 +150,33 @@ fn spawn_handler() -> mpsc::Sender<OxMessage> {
                 }
             }
         }
+
+        event!(Level::TRACE, "handler loop exit");
     });
 
-    tx
+    (tx, task)
+}
+
+async fn shutdown_future() {
+    let ctrl_c = async {
+        signal::ctrl_c()
+            .await
+            .expect("failed to install Ctrl+C handler");
+    };
+
+    #[cfg(unix)]
+    let terminate = async {
+        signal::unix::signal(signal::unix::SignalKind::terminate())
+            .expect("failed to install signal handler")
+            .recv()
+            .await;
+    };
+
+    #[cfg(not(unix))]
+    let terminate = std::future::pending::<()>();
+
+    tokio::select! {
+        _ = ctrl_c => event!(Level::DEBUG, "SIGINT"),
+        _ = terminate => event!(Level::DEBUG, "SIGTERM"),
+    }
 }
