@@ -1,15 +1,14 @@
-
 use axum::{
-    routing::{get, post, put},
+    extract::Extension,
     http::StatusCode,
     response::IntoResponse,
+    routing::{get, post, put},
     Json, Router,
-    extract::Extension
 };
-use tracing::{event, Level};
+use futures::{future::FutureExt, stream::futures_unordered::FuturesUnordered, StreamExt};
 use serde::Deserialize;
 use tokio::{process::Command, sync::mpsc, time};
-use futures::{stream::futures_unordered::FuturesUnordered, StreamExt, future::FutureExt};
+use tracing::{event, Level};
 
 use std::collections::HashMap;
 use std::net::SocketAddr;
@@ -37,7 +36,7 @@ async fn main() {
 
 async fn ox_notify(
     Extension(handler): Extension<mpsc::Sender<OxMessage>>,
-    Json(payload): Json<OxMessage>
+    Json(payload): Json<OxMessage>,
 ) -> impl IntoResponse {
     event!(Level::DEBUG, "{:?}", payload);
 
@@ -69,7 +68,7 @@ struct Account {
     last_update: Option<Instant>,
     pending_messages: bool,
     consecutive_fails: u32,
-    executing: bool
+    executing: bool,
 }
 
 fn spawn_handler() -> mpsc::Sender<OxMessage> {
