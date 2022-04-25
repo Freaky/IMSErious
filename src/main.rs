@@ -1,48 +1,66 @@
 use axum::{
     extract::Extension, http::StatusCode, response::IntoResponse, routing::put, Json, Router,
 };
-use futures::{future::FutureExt, stream::futures_unordered::FuturesUnordered, StreamExt};
 use serde::Deserialize;
-use tokio::{process::Command, signal, sync::mpsc, time};
+use tokio::{
+    process::Command,
+    signal,
+    sync::watch,
+    time::{self, Duration, Instant},
+};
 use tracing::{event, Level};
 
 use std::collections::HashMap;
 use std::net::SocketAddr;
-use std::process::ExitStatus;
-use std::time::{Duration, Instant};
+use std::sync::Arc;
 
 #[tokio::main]
 async fn main() {
     tracing_subscriber::fmt::init();
 
-    let (tx, task) = spawn_handler();
+    let mut accounts = HashMap::new();
+    let mut tasks = vec![];
+    for user in &["freaky", "veron"] {
+        let (tx, task) = user_handler(user.to_string());
+        tasks.push(task);
+        accounts.insert(user.to_string(), tx);
+    }
+
     let app = Router::new()
         .route("/ox_notify", put(ox_notify))
-        .layer(Extension(tx));
+        .layer(Extension(Arc::new(accounts)));
 
     let addr = SocketAddr::from(([10, 0, 0, 1], 12525));
     tracing::debug!("listening on {}", addr);
     axum::Server::bind(&addr)
         .serve(app.into_make_service())
-        .with_graceful_shutdown(async move {
-            task.await.unwrap();
-        })
+        .with_graceful_shutdown(shutdown_future())
         .await
         .unwrap();
+
+    for task in tasks {
+        let join = task.await;
+        event!(Level::DEBUG, "{:?}", join);
+    }
 }
 
 async fn ox_notify(
-    Extension(handler): Extension<mpsc::Sender<OxMessage>>,
+    Extension(handler): Extension<Arc<HashMap<String, watch::Sender<()>>>>,
     Json(payload): Json<OxMessage>,
 ) -> impl IntoResponse {
     event!(Level::DEBUG, "{:?}", payload);
 
     if payload.event == "messageNew" {
-        if handler.send(payload).await.is_err() {
+        if let Some(tx) = handler.get(&payload.user) {
+            if tx.send(()).is_ok() {
+                return StatusCode::OK;
+            } else {
+                return StatusCode::INTERNAL_SERVER_ERROR;
+            }
+        } else {
             return StatusCode::INTERNAL_SERVER_ERROR;
         }
     }
-
     StatusCode::OK
 }
 
@@ -60,98 +78,55 @@ struct OxMessage {
     user: String,
 }
 
-#[derive(Debug, Default)]
-struct Account {
-    last_update: Option<Instant>,
-    pending_messages: bool,
-    consecutive_fails: u32,
-    executing: bool,
-}
-
-fn spawn_handler() -> (mpsc::Sender<OxMessage>, tokio::task::JoinHandle<()>) {
-    let (tx, mut rx) = mpsc::channel::<OxMessage>(16);
-
-    // hardcode this for now
-    let mut accounts = HashMap::new();
-    accounts.insert("freaky".to_string(), Account::default());
-    accounts.insert("veron".to_string(), Account::default());
-
-    // Could set a more lenient MissedTickBehaviour
-    let mut tock = time::interval(Duration::from_secs(10));
-    let mut tasks = FuturesUnordered::new();
-    let mut shutdown = false;
-    let mut terminate = tokio::spawn(shutdown_future());
+fn user_handler(user: String) -> (watch::Sender<()>, tokio::task::JoinHandle<()>) {
+    let (tx, mut rx) = watch::channel::<()>(());
 
     let task = tokio::spawn(async move {
-        while !shutdown || !tasks.is_empty() {
-            tokio::select! {
-                _ = &mut terminate, if !shutdown => {
-                    shutdown = true;
-                }
-                Some(message) = rx.recv() => {
-                    if let Some(account) = accounts.get_mut(&message.user) {
-                        // in case fdm leaves messages on the server,
-                        // just count notifications instead of unseen
-                        event!(Level::INFO, "New mail for {}", message.user);
-                        account.pending_messages = true;
+        let min_delay = Duration::from_secs(30);
+        let max_delay = Duration::from_secs(300);
+        let mut next_delay = max_delay;
+        let mut last_execution = Instant::now();
+
+        loop {
+            let event = time::timeout_at(last_execution + next_delay, rx.changed()).await;
+
+            match event {
+                Ok(Ok(())) => {
+                    // Notification wakeup
+                    event!(Level::INFO, "notification for {}", &user);
+                    if last_execution.elapsed() < min_delay {
+                        event!(Level::INFO, "scheduling next wakeup for {}", &user);
+                        // schedule the next wakeup at our earliest allowable moment
+                        next_delay = min_delay;
+                        continue;
                     }
                 }
-                Some((user, status)) = tasks.next() => {
-                    event!(Level::INFO, "Complete for {}: {:?}", user, status);
-                    if let Some(account) = accounts.get_mut(&user) {
-                        account.last_update = Some(Instant::now());
-                        account.executing = false;
-                        account.pending_messages = false;
-
-                        // Type inference seems to get a bit wonky here
-                        match status {
-                            Ok(status) => {
-                                if ExitStatus::success(&status) {
-                                    account.consecutive_fails = 0;
-                                } else {
-                                    account.consecutive_fails += 1;
-                                }
-                            }
-                            _ => {
-                                account.consecutive_fails += 1;
-                            }
-                        }
-                    }
+                Err(_) => {
+                    // Timeout wakeup
+                    event!(Level::INFO, "scheduled wakeup for {}", &user);
                 }
-                _ = tock.tick(), if !shutdown => {
-                    for (user, account) in accounts.iter_mut() {
-                        event!(Level::TRACE, "Tick for {}: {:?}", user, account);
-
-                        // Nothing to do
-                        if !account.pending_messages || account.executing {
-                            continue;
-                        }
-
-                        if let Some(last_update) = account.last_update {
-                            if last_update.elapsed() < Duration::from_secs(10) {
-                                continue;
-                            }
-                        }
-
-                        account.executing = true;
-                        let mut command = Command::new("/usr/local/bin/sudo");
-                        command
-                            .args(&["-n", "-H"]) // non-interactive, set HOME
-                            .arg("-u")
-                            .arg(user)
-                            .arg("/usr/local/bin/fdm")
-                            .args(&["-a", "eda"]) // account eda
-                            .args(&["-l"]) // log to syslog
-                            .arg("fetch");
-                        event!(Level::DEBUG, "Executing {:?}", command);
-                        let user = user.clone();
-                        tasks.push(command.status().map(|status| (user, status)));
-                    }
+                Ok(Err(_)) => {
+                    event!(Level::DEBUG, "shutdown handler for {}", &user);
+                    break;
                 }
             }
-        }
 
-        event!(Level::TRACE, "handler loop exit");
+            event!(Level::INFO, "fetching for {}", &user);
+            let mut command = Command::new("/usr/local/bin/sudo");
+            command
+                .args(&["-n", "-H"]) // non-interactive, set HOME
+                .arg("-u")
+                .arg(&user)
+                .arg("/usr/local/bin/fdm")
+                .args(&["-a", "eda"]) // account eda
+                .args(&["-l"]) // log to syslog
+                .arg("fetch");
+
+            let result = command.status().await;
+            last_execution = Instant::now();
+            event!(Level::INFO, "fetch complete for {}: {:?}", &user, result);
+            next_delay = max_delay;
+        }
     });
 
     (tx, task)
