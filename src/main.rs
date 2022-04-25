@@ -6,7 +6,7 @@ use tokio::{
     process::Command,
     signal,
     sync::watch,
-    time::{self, Duration, Instant},
+    time::{timeout_at, Duration, Instant},
 };
 use tracing::{event, Level};
 
@@ -85,28 +85,15 @@ fn user_handler(user: String) -> (watch::Sender<()>, tokio::task::JoinHandle<()>
         let mut next_delay = max_delay;
         let mut last_execution = Instant::now();
 
-        loop {
-            let event = time::timeout_at(last_execution + next_delay, rx.changed()).await;
-
-            match event {
-                Ok(Ok(())) => {
-                    // Notification wakeup
-                    event!(Level::INFO, "notification for {}", &user);
-                    if last_execution.elapsed() < min_delay {
-                        event!(Level::INFO, "scheduling next wakeup for {}", &user);
-                        // schedule the next wakeup at our earliest allowable moment
-                        next_delay = min_delay;
-                        continue;
-                    }
-                }
-                Err(_) => {
-                    // Timeout wakeup
-                    event!(Level::INFO, "scheduled wakeup for {}", &user);
-                }
-                Ok(Err(_)) => {
-                    event!(Level::DEBUG, "shutdown handler for {}", &user);
-                    break;
-                }
+        while let Ok(event) = timeout_at(last_execution + next_delay, rx.changed())
+            .await
+            .ok()
+            .transpose()
+        {
+            if event.is_some() && last_execution.elapsed() < min_delay {
+                event!(Level::TRACE, "scheduling next wakeup for {}", &user);
+                next_delay = min_delay;
+                continue;
             }
 
             event!(Level::INFO, "fetching for {}", &user);
