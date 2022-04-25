@@ -49,17 +49,12 @@ async fn ox_notify(
 ) -> impl IntoResponse {
     event!(Level::DEBUG, "{:?}", payload);
 
-    if payload.event != "messageNew" {
-        StatusCode::OK
-    } else if handler
-        .get(&payload.user)
-        .and_then(|entry| entry.send(()).ok())
-        .is_some()
-    {
-        StatusCode::OK
-    } else {
-        StatusCode::INTERNAL_SERVER_ERROR
+    if payload.event == "messageNew" {
+        handler
+            .get(&payload.user)
+            .and_then(|entry| entry.send(()).ok());
     }
+    StatusCode::OK
 }
 
 #[derive(Deserialize, Debug)]
