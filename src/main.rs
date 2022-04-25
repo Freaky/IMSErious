@@ -39,8 +39,7 @@ async fn main() {
         .unwrap();
 
     for task in tasks {
-        let join = task.await;
-        event!(Level::DEBUG, "{:?}", join);
+        event!(Level::TRACE, "handler shutdown {:?}", task.await);
     }
 }
 
@@ -50,18 +49,17 @@ async fn ox_notify(
 ) -> impl IntoResponse {
     event!(Level::DEBUG, "{:?}", payload);
 
-    if payload.event == "messageNew" {
-        if let Some(tx) = handler.get(&payload.user) {
-            if tx.send(()).is_ok() {
-                return StatusCode::OK;
-            } else {
-                return StatusCode::INTERNAL_SERVER_ERROR;
-            }
-        } else {
-            return StatusCode::INTERNAL_SERVER_ERROR;
-        }
+    if payload.event != "messageNew" {
+        StatusCode::OK
+    } else if handler
+        .get(&payload.user)
+        .and_then(|entry| entry.send(()).ok())
+        .is_some()
+    {
+        StatusCode::OK
+    } else {
+        StatusCode::INTERNAL_SERVER_ERROR
     }
-    StatusCode::OK
 }
 
 #[derive(Deserialize, Debug)]
