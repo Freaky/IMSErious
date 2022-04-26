@@ -43,13 +43,12 @@ async fn main() {
     }
 }
 
+#[tracing::instrument(skip(handler))]
 async fn ox_notify(
     Extension(handler): Extension<Arc<HashMap<String, watch::Sender<()>>>>,
     Json(payload): Json<OxMessage>,
 ) -> impl IntoResponse {
-    event!(Level::DEBUG, "{:?}", payload);
-
-    if payload.event == "messageNew" {
+    if payload.event == OxEvent::MessageNew {
         handler
             .get(&payload.user)
             .and_then(|entry| entry.send(()).ok());
@@ -57,10 +56,61 @@ async fn ox_notify(
     StatusCode::OK
 }
 
+#[derive(Deserialize, Debug, PartialEq, Eq)]
+#[serde(try_from = "&str")]
+enum OxEvent {
+    FlagsClear,
+    FlagsSet,
+    MailboxCreate,
+    MailboxDelete,
+    MailboxRename,
+    MailboxSubscribe,
+    MailboxUnsubscribe,
+    MessageAppend,
+    MessageExpunge,
+    MessageNew,
+    MessageRead,
+    MessageTrash,
+}
+
+impl TryFrom<&str> for OxEvent {
+    type Error = &'static str;
+
+    fn try_from(string: &str) -> Result<Self, Self::Error> {
+        if string.eq_ignore_ascii_case("FlagsClear") {
+            Ok(OxEvent::FlagsClear)
+        } else if string.eq_ignore_ascii_case("FlagsSet") {
+            Ok(OxEvent::FlagsSet)
+        } else if string.eq_ignore_ascii_case("MailboxCreate") {
+            Ok(OxEvent::MailboxCreate)
+        } else if string.eq_ignore_ascii_case("MailboxDelete") {
+            Ok(OxEvent::MailboxDelete)
+        } else if string.eq_ignore_ascii_case("MailboxRename") {
+            Ok(OxEvent::MailboxRename)
+        } else if string.eq_ignore_ascii_case("MailboxSubscribe") {
+            Ok(OxEvent::MailboxSubscribe)
+        } else if string.eq_ignore_ascii_case("MailboxUnsubscribe") {
+            Ok(OxEvent::MailboxUnsubscribe)
+        } else if string.eq_ignore_ascii_case("MessageAppend") {
+            Ok(OxEvent::MessageAppend)
+        } else if string.eq_ignore_ascii_case("MessageExpunge") {
+            Ok(OxEvent::MessageExpunge)
+        } else if string.eq_ignore_ascii_case("MessageNew") {
+            Ok(OxEvent::MessageNew)
+        } else if string.eq_ignore_ascii_case("MessageRead") {
+            Ok(OxEvent::MessageRead)
+        } else if string.eq_ignore_ascii_case("MessageTrash") {
+            Ok(OxEvent::MessageTrash)
+        } else {
+            Err("unknown message type")
+        }
+    }
+}
+
 #[derive(Deserialize, Debug)]
 #[serde(rename_all = "kebab-case")]
 struct OxMessage {
-    event: String,
+    event: OxEvent,
     // fields we don't currently care about
     // folder: String,
     // from: Option<String>,
