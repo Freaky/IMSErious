@@ -90,29 +90,29 @@ impl TryFrom<&str> for ImseEvent {
 
     fn try_from(string: &str) -> Result<Self, Self::Error> {
         if string.eq_ignore_ascii_case("FlagsClear") {
-            Ok(ImseEvent::FlagsClear)
+            Ok(Self::FlagsClear)
         } else if string.eq_ignore_ascii_case("FlagsSet") {
-            Ok(ImseEvent::FlagsSet)
+            Ok(Self::FlagsSet)
         } else if string.eq_ignore_ascii_case("MailboxCreate") {
-            Ok(ImseEvent::MailboxCreate)
+            Ok(Self::MailboxCreate)
         } else if string.eq_ignore_ascii_case("MailboxDelete") {
-            Ok(ImseEvent::MailboxDelete)
+            Ok(Self::MailboxDelete)
         } else if string.eq_ignore_ascii_case("MailboxRename") {
-            Ok(ImseEvent::MailboxRename)
+            Ok(Self::MailboxRename)
         } else if string.eq_ignore_ascii_case("MailboxSubscribe") {
-            Ok(ImseEvent::MailboxSubscribe)
+            Ok(Self::MailboxSubscribe)
         } else if string.eq_ignore_ascii_case("MailboxUnsubscribe") {
-            Ok(ImseEvent::MailboxUnsubscribe)
+            Ok(Self::MailboxUnsubscribe)
         } else if string.eq_ignore_ascii_case("MessageAppend") {
-            Ok(ImseEvent::MessageAppend)
+            Ok(Self::MessageAppend)
         } else if string.eq_ignore_ascii_case("MessageExpunge") {
-            Ok(ImseEvent::MessageExpunge)
+            Ok(Self::MessageExpunge)
         } else if string.eq_ignore_ascii_case("MessageNew") {
-            Ok(ImseEvent::MessageNew)
+            Ok(Self::MessageNew)
         } else if string.eq_ignore_ascii_case("MessageRead") {
-            Ok(ImseEvent::MessageRead)
+            Ok(Self::MessageRead)
         } else if string.eq_ignore_ascii_case("MessageTrash") {
-            Ok(ImseEvent::MessageTrash)
+            Ok(Self::MessageTrash)
         } else {
             Err("unknown message type")
         }
@@ -131,7 +131,7 @@ impl TryFrom<&str> for SplitCommand {
         if command.is_empty() {
             return Err("command is empty");
         }
-        Ok(SplitCommand(command))
+        Ok(Self(command))
     }
 }
 
