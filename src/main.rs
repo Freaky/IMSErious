@@ -1,6 +1,8 @@
+use anyhow::Result;
 use axum::{
     extract::Extension, http::StatusCode, response::IntoResponse, routing::put, Json, Router,
 };
+use derive_more::Display;
 use serde::Deserialize;
 use tokio::{
     process::Command,
@@ -15,50 +17,60 @@ use std::net::SocketAddr;
 use std::sync::Arc;
 
 #[tokio::main(flavor = "current_thread")]
-async fn main() {
+async fn main() -> Result<()> {
     tracing_subscriber::fmt::init();
 
-    let mut accounts = HashMap::new();
+    let config_path = "/usr/local/etc/imserious.toml";
+
+    tracing::debug!("loading config from {}", config_path);
+    let config: Config =
+        toml::from_str(&std::fs::read_to_string(&config_path)?)?;
+
+    let mut handlers = HashMap::new();
     let mut tasks = vec![];
-    for user in &["freaky", "veron"] {
-        let (tx, task) = user_handler(user.to_string());
+    for handler in config.handler {
+        tracing::debug!("register handler: {:?}", handler);
+        let (tx, task) = command_handler(handler.clone());
         tasks.push(task);
-        accounts.insert(user.to_string(), tx);
+        handlers.insert((handler.event, handler.user.clone()), tx);
     }
 
     let app = Router::new()
-        .route("/ox_notify", put(ox_notify))
-        .layer(Extension(Arc::new(accounts)));
+        .route("/notify", put(notify))
+        .layer(Extension(Arc::new(handlers)));
 
-    let addr = SocketAddr::from(([10, 0, 0, 1], 12525));
+    let addr = config
+        .listen
+        .unwrap_or(SocketAddr::from(([127, 0, 0, 1], 12525)));
     tracing::debug!("listening on {}", addr);
     axum::Server::bind(&addr)
         .serve(app.into_make_service())
         .with_graceful_shutdown(shutdown_future())
-        .await
-        .unwrap();
+        .await?;
 
     for task in tasks {
         event!(Level::TRACE, "handler shutdown {:?}", task.await);
     }
+
+    Ok(())
 }
 
 #[tracing::instrument(skip(handler))]
-async fn ox_notify(
-    Extension(handler): Extension<Arc<HashMap<String, watch::Sender<()>>>>,
-    Json(payload): Json<OxMessage>,
+async fn notify(
+    Extension(handler): Extension<
+        Arc<HashMap<(ImseEvent, String), watch::Sender<Option<ImseMessage>>>>,
+    >,
+    Json(message): Json<ImseMessage>,
 ) -> impl IntoResponse {
-    if payload.event == OxEvent::MessageNew {
-        handler
-            .get(&payload.user)
-            .and_then(|entry| entry.send(()).ok());
+    if let Some(tx) = handler.get(&(message.event, message.user.clone())) {
+        let _ = tx.send(Some(message));
     }
     StatusCode::OK
 }
 
-#[derive(Deserialize, Debug, PartialEq, Eq)]
+#[derive(Copy, Clone, Deserialize, Debug, Display, Hash, PartialEq, Eq)]
 #[serde(try_from = "&str")]
-enum OxEvent {
+enum ImseEvent {
     FlagsClear,
     FlagsSet,
     MailboxCreate,
@@ -73,60 +85,104 @@ enum OxEvent {
     MessageTrash,
 }
 
-impl TryFrom<&str> for OxEvent {
+impl TryFrom<&str> for ImseEvent {
     type Error = &'static str;
 
     fn try_from(string: &str) -> Result<Self, Self::Error> {
         if string.eq_ignore_ascii_case("FlagsClear") {
-            Ok(OxEvent::FlagsClear)
+            Ok(ImseEvent::FlagsClear)
         } else if string.eq_ignore_ascii_case("FlagsSet") {
-            Ok(OxEvent::FlagsSet)
+            Ok(ImseEvent::FlagsSet)
         } else if string.eq_ignore_ascii_case("MailboxCreate") {
-            Ok(OxEvent::MailboxCreate)
+            Ok(ImseEvent::MailboxCreate)
         } else if string.eq_ignore_ascii_case("MailboxDelete") {
-            Ok(OxEvent::MailboxDelete)
+            Ok(ImseEvent::MailboxDelete)
         } else if string.eq_ignore_ascii_case("MailboxRename") {
-            Ok(OxEvent::MailboxRename)
+            Ok(ImseEvent::MailboxRename)
         } else if string.eq_ignore_ascii_case("MailboxSubscribe") {
-            Ok(OxEvent::MailboxSubscribe)
+            Ok(ImseEvent::MailboxSubscribe)
         } else if string.eq_ignore_ascii_case("MailboxUnsubscribe") {
-            Ok(OxEvent::MailboxUnsubscribe)
+            Ok(ImseEvent::MailboxUnsubscribe)
         } else if string.eq_ignore_ascii_case("MessageAppend") {
-            Ok(OxEvent::MessageAppend)
+            Ok(ImseEvent::MessageAppend)
         } else if string.eq_ignore_ascii_case("MessageExpunge") {
-            Ok(OxEvent::MessageExpunge)
+            Ok(ImseEvent::MessageExpunge)
         } else if string.eq_ignore_ascii_case("MessageNew") {
-            Ok(OxEvent::MessageNew)
+            Ok(ImseEvent::MessageNew)
         } else if string.eq_ignore_ascii_case("MessageRead") {
-            Ok(OxEvent::MessageRead)
+            Ok(ImseEvent::MessageRead)
         } else if string.eq_ignore_ascii_case("MessageTrash") {
-            Ok(OxEvent::MessageTrash)
+            Ok(ImseEvent::MessageTrash)
         } else {
             Err("unknown message type")
         }
     }
 }
 
-#[derive(Deserialize, Debug)]
-#[serde(rename_all = "kebab-case")]
-struct OxMessage {
-    event: OxEvent,
-    // fields we don't currently care about
-    // folder: String,
-    // from: Option<String>,
-    // imap_uid: Option<u32>,
-    // imap_uidvalidity: u32,
-    // snippet: Option<String>,
-    // unseen: u32,
-    user: String,
+#[derive(Debug, Clone, Deserialize)]
+#[serde(try_from = "&str")]
+struct SplitCommand(Vec<String>);
+
+impl TryFrom<&str> for SplitCommand {
+    type Error = &'static str;
+
+    fn try_from(string: &str) -> Result<Self, Self::Error> {
+        let command = shell_words::split(string).map_err(|_| "missing closing quote")?;
+        if command.is_empty() {
+            return Err("command is empty");
+        }
+        Ok(SplitCommand(command))
+    }
 }
 
-fn user_handler(user: String) -> (watch::Sender<()>, tokio::task::JoinHandle<()>) {
-    let (tx, mut rx) = watch::channel::<()>(());
+impl SplitCommand {
+    fn as_tokio_command(&self) -> Command {
+        let mut command = Command::new(&self.0[0]);
+        if self.0.len() > 1 {
+            command.args(&self.0[1..]);
+        }
+        command
+    }
+}
+
+#[derive(Deserialize, Debug)]
+struct ImseMessage {
+    event: ImseEvent,
+    user: String,
+    unseen: u32,
+    folder: String,
+    from: Option<String>,
+    snippet: Option<String>,
+}
+
+#[derive(Deserialize, Debug, Clone)]
+struct Config {
+    listen: Option<SocketAddr>,
+    handler: Vec<Handler>,
+}
+
+#[derive(Deserialize, Debug, Clone)]
+struct Handler {
+    event: ImseEvent,
+    user: String,
+    #[serde(with = "humantime_serde")]
+    min_delay: Duration,
+    #[serde(with = "humantime_serde")]
+    max_delay: Option<Duration>,
+    command: SplitCommand,
+}
+
+fn command_handler(
+    handler: Handler,
+) -> (
+    watch::Sender<Option<ImseMessage>>,
+    tokio::task::JoinHandle<()>,
+) {
+    let (tx, mut rx) = watch::channel::<Option<ImseMessage>>(None);
 
     let task = tokio::spawn(async move {
-        let min_delay = Duration::from_secs(30);
-        let max_delay = Duration::from_secs(300);
+        let min_delay = handler.min_delay;
+        let max_delay = handler.max_delay.unwrap_or(Duration::from_secs(3600));
         let mut next_delay = max_delay;
         let mut last_execution = Instant::now();
 
@@ -135,26 +191,41 @@ fn user_handler(user: String) -> (watch::Sender<()>, tokio::task::JoinHandle<()>
             .ok()
             .transpose()
         {
-            if event.is_some() && last_execution.elapsed() < min_delay {
-                event!(Level::TRACE, "scheduling next wakeup for {}", &user);
-                next_delay = min_delay;
-                continue;
+            match event {
+                Some(_) if last_execution.elapsed() < min_delay => {
+                    event!(
+                        Level::TRACE,
+                        "scheduling next wakeup for {}::{}",
+                        handler.event,
+                        &handler.user
+                    );
+                    next_delay = min_delay;
+                    continue;
+                }
+                None if handler.max_delay.is_none() => continue,
+                _ => (),
             }
 
-            event!(Level::INFO, "fetching for {}", &user);
-            let mut command = Command::new("/usr/local/bin/sudo");
-            command
-                .args(&["-n", "-H"]) // non-interactive, set HOME
-                .arg("-u")
-                .arg(&user)
-                .arg("/usr/local/bin/fdm")
-                .args(&["-a", "eda"]) // account eda
-                .args(&["-l"]) // log to syslog
-                .arg("fetch");
+            let mut command = handler.command.as_tokio_command();
+            if let Some(message) = &*rx.borrow() {
+                command
+                    .env("IMSE_EVENT", message.event.to_string())
+                    .env("IMSE_USER", &handler.user)
+                    .env("IMSE_UNSEEN", message.unseen.to_string())
+                    .env("IMSE_FOLDER", &message.folder)
+                    .env("IMSE_FROM", message.from.as_deref().unwrap_or(""))
+                    .env("IMSE_SNIPPET", message.snippet.as_deref().unwrap_or(""));
+            }
 
             let result = command.status().await;
             last_execution = Instant::now();
-            event!(Level::INFO, "fetch complete for {}: {:?}", &user, result);
+            event!(
+                Level::INFO,
+                "execution complete for {}::{}: {:?}",
+                handler.event,
+                &handler.user,
+                result
+            );
             next_delay = max_delay;
         }
     });
