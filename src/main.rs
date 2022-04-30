@@ -10,7 +10,6 @@ use tokio::{
     sync::watch,
     time::{timeout_at, Duration, Instant},
 };
-use tracing::{event, Level};
 
 use std::net::SocketAddr;
 use std::sync::Arc;
@@ -40,20 +39,19 @@ async fn main() -> Result<()> {
     let addr = config
         .listen
         .unwrap_or(SocketAddr::from(([127, 0, 0, 1], 12525)));
-    tracing::debug!("listening on {}", addr);
+    tracing::info!("listening on {}", addr);
     axum::Server::bind(&addr)
         .serve(app.into_make_service())
         .with_graceful_shutdown(shutdown_future())
         .await?;
 
     for task in tasks {
-        event!(Level::TRACE, "handler shutdown {:?}", task.await);
+        tracing::trace!("handler shutdown {:?}", task.await);
     }
 
     Ok(())
 }
 
-#[tracing::instrument(skip(handlers))]
 async fn notify(
     Extension(handlers): Extension<Arc<Vec<(ImseEvent, String, HandlerSender)>>>,
     Json(message): Json<ImseMessage>,
@@ -192,8 +190,7 @@ fn command_handler(handler: Handler) -> (HandlerSender, tokio::task::JoinHandle<
         {
             match event {
                 Some(_) if last_execution.elapsed() < min_delay => {
-                    event!(
-                        Level::TRACE,
+                    tracing::trace!(
                         "scheduling next wakeup for {}::{}",
                         handler.event,
                         &handler.user
@@ -218,13 +215,22 @@ fn command_handler(handler: Handler) -> (HandlerSender, tokio::task::JoinHandle<
 
             let result = command.status().await;
             last_execution = Instant::now();
-            event!(
-                Level::INFO,
-                "execution complete for {}::{}: {:?}",
-                handler.event,
-                &handler.user,
-                result
-            );
+            if let Ok(result) = result {
+                tracing::info!(
+                    "execution complete for {}::{}: rc={}",
+                    handler.event,
+                    &handler.user,
+                    result.code().unwrap_or(-1)
+                );
+            } else {
+                tracing::warn!(
+                    "execution failed for {}::{}: status={:?}",
+                    handler.event,
+                    &handler.user,
+                    result
+                )
+            }
+
             next_delay = max_delay;
         }
     });
@@ -251,7 +257,7 @@ async fn shutdown_future() {
     let terminate = std::future::pending::<()>();
 
     tokio::select! {
-        _ = ctrl_c => event!(Level::DEBUG, "SIGINT"),
-        _ = terminate => event!(Level::DEBUG, "SIGTERM"),
+        _ = ctrl_c => tracing::info!("signal: SIGINT"),
+        _ = terminate => tracing::info!("signal: SIGTERM"),
     }
 }
