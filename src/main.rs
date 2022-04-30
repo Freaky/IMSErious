@@ -12,7 +12,6 @@ use tokio::{
 };
 use tracing::{event, Level};
 
-use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::Arc;
 
@@ -23,16 +22,15 @@ async fn main() -> Result<()> {
     let config_path = "/usr/local/etc/imserious.toml";
 
     tracing::debug!("loading config from {}", config_path);
-    let config: Config =
-        toml::from_str(&std::fs::read_to_string(&config_path)?)?;
+    let config: Config = toml::from_str(&std::fs::read_to_string(&config_path)?)?;
 
-    let mut handlers = HashMap::new();
+    let mut handlers = vec![];
     let mut tasks = vec![];
     for handler in config.handler {
         tracing::debug!("register handler: {:?}", handler);
         let (tx, task) = command_handler(handler.clone());
         tasks.push(task);
-        handlers.insert((handler.event, handler.user.clone()), tx);
+        handlers.push((handler.event, handler.user.clone(), tx));
     }
 
     let app = Router::new()
@@ -55,16 +53,19 @@ async fn main() -> Result<()> {
     Ok(())
 }
 
-#[tracing::instrument(skip(handler))]
+#[tracing::instrument(skip(handlers))]
 async fn notify(
-    Extension(handler): Extension<
-        Arc<HashMap<(ImseEvent, String), watch::Sender<Option<ImseMessage>>>>,
-    >,
+    Extension(handlers): Extension<Arc<Vec<(ImseEvent, String, HandlerSender)>>>,
     Json(message): Json<ImseMessage>,
 ) -> impl IntoResponse {
-    if let Some(tx) = handler.get(&(message.event, message.user.clone())) {
-        let _ = tx.send(Some(message));
+    let message = Arc::new(message);
+    for (_, _, handler) in handlers
+        .iter()
+        .filter(|(event, user, _)| *event == message.event && *user == message.user)
+    {
+        drop(handler.send(Some(Arc::clone(&message))));
     }
+
     StatusCode::OK
 }
 
@@ -145,7 +146,7 @@ impl SplitCommand {
     }
 }
 
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Clone, Debug)]
 struct ImseMessage {
     event: ImseEvent,
     user: String,
@@ -172,13 +173,11 @@ struct Handler {
     command: SplitCommand,
 }
 
-fn command_handler(
-    handler: Handler,
-) -> (
-    watch::Sender<Option<ImseMessage>>,
-    tokio::task::JoinHandle<()>,
-) {
-    let (tx, mut rx) = watch::channel::<Option<ImseMessage>>(None);
+type HandlerPayload = Option<Arc<ImseMessage>>;
+type HandlerSender = watch::Sender<HandlerPayload>;
+
+fn command_handler(handler: Handler) -> (HandlerSender, tokio::task::JoinHandle<()>) {
+    let (tx, mut rx) = watch::channel::<HandlerPayload>(None);
 
     let task = tokio::spawn(async move {
         let min_delay = handler.min_delay;
