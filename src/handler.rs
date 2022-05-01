@@ -7,7 +7,7 @@ use tokio::{
 use std::sync::Arc;
 
 use crate::config::SplitCommand;
-use crate::message::*;
+use crate::message::{ImseEvent, ImseMessage};
 
 #[derive(Deserialize, Debug, Clone)]
 pub struct Handler {
@@ -53,10 +53,10 @@ impl Handler {
                 }
 
                 let mut command = self.command.as_tokio_command();
+                command.env("IMSE_USER", &self.user);
                 if let Some(message) = &*rx.borrow() {
                     command
                         .env("IMSE_EVENT", message.event.to_string())
-                        .env("IMSE_USER", &self.user)
                         .env("IMSE_UNSEEN", message.unseen.to_string())
                         .env("IMSE_FOLDER", &message.folder)
                         .env("IMSE_FROM", message.from.as_deref().unwrap_or(""))
