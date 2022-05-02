@@ -15,7 +15,7 @@ pub struct Handler {
     pub user: String,
     #[serde(with = "humantime_serde")]
     pub min_delay: Duration,
-    #[serde(with = "humantime_serde")]
+    #[serde(default, with = "humantime_serde")]
     pub max_delay: Option<Duration>,
     pub command: SplitCommand,
 }
