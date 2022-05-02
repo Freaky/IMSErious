@@ -12,7 +12,8 @@ Currently IMSErious is hardcoded to load a config from `/usr/local/etc/imserious
 of the form:
 
 ```toml
-listen = "127.0.0.1:12345"
+listen = "10.0.0.1:12345"
+allow = [ "10.0.0.2/32" ] # allowed notification ranges (optional)
 
 [[handler]]
 event = "MessageNew"
@@ -22,10 +23,12 @@ max_delay = "300s" # infinite if not specified
 command = "/usr/local/bin/fdm -a eda -l fetch"
 ```
 
-The `[[handler]]` section may be repeated for multiple users and events. In this
-case a `MessageNew` notification for user `freaky` will trigger `fdm` to fetch
-email from the named account `eda` at most every 30 seconds, and will trigger every
-300 seconds regardless of whether there has been an event or not.
+The `[[handler]]` section may be repeated for multiple users and events, and
+even repeated for the same user and event to trigger multiple programs.
+
+In this example a `MessageNew` notification for user `freaky` will trigger `fdm` to
+fetch email from the named account `eda` at most every 30 seconds, and will trigger
+every 300 seconds regardless of whether there has been an event or not.
 
 `command` does not support shell metacharacters other than basic word splitting and
 quotes.
