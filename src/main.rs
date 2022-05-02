@@ -1,6 +1,6 @@
 use anyhow::Result;
 use axum::{
-    extract::{ConnectInfo, Extension},
+    extract::{extractor_middleware, ConnectInfo, ContentLengthLimit, Extension},
     http::StatusCode,
     response::IntoResponse,
     routing::put,
@@ -47,7 +47,8 @@ async fn main() -> Result<()> {
     let app = Router::new()
         .route("/notify", put(notify))
         .layer(Extension(Arc::new(handlers)))
-        .layer(Extension(Arc::new(config.allow)));
+        .layer(Extension(Arc::new(config.allow)))
+        .layer(extractor_middleware::<ContentLengthLimit<(), 1024>>());
 
     axum::Server::bind(&addr)
         .serve(app.into_make_service_with_connect_info::<SocketAddr>())
