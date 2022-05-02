@@ -2,14 +2,14 @@ use anyhow::Result;
 use serde::Deserialize;
 use tokio::process::Command;
 
-use std::net::SocketAddr;
-use std::path::Path;
-
 use crate::handler::Handler;
 
 #[derive(Deserialize, Debug, Clone)]
 pub struct Config {
-    pub listen: Option<SocketAddr>,
+    #[serde(default)]
+    pub listen: Option<std::net::SocketAddr>,
+    #[serde(default)]
+    pub allow: Vec<ipnet::IpNet>,
     pub handler: Vec<Handler>,
 }
 
@@ -42,7 +42,7 @@ impl SplitCommand {
 impl Config {
     pub fn from_path<P>(path: P) -> Result<Config>
     where
-        P: AsRef<Path>,
+        P: AsRef<std::path::Path>,
     {
         tracing::debug!("loading config from {}", path.as_ref().display());
         Ok(toml::from_str(&std::fs::read_to_string(path)?)?)

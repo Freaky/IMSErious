@@ -1,7 +1,12 @@
 use anyhow::Result;
 use axum::{
-    extract::Extension, http::StatusCode, response::IntoResponse, routing::put, Json, Router,
+    extract::{ConnectInfo, Extension},
+    http::StatusCode,
+    response::IntoResponse,
+    routing::put,
+    Json, Router,
 };
+use ipnet::IpNet;
 use tokio::signal;
 
 use std::net::SocketAddr;
@@ -31,16 +36,21 @@ async fn main() -> Result<()> {
         handlers.push((handler.event, handler.user, tx));
     }
 
-    let app = Router::new()
-        .route("/notify", put(notify))
-        .layer(Extension(Arc::new(handlers)));
-
     let addr = config
         .listen
         .unwrap_or(SocketAddr::from(([127, 0, 0, 1], 12525)));
     tracing::info!("listening on {}", addr);
+    for net in &config.allow {
+        tracing::info!("restricting to {}", net);
+    }
+
+    let app = Router::new()
+        .route("/notify", put(notify))
+        .layer(Extension(Arc::new(handlers)))
+        .layer(Extension(Arc::new(config.allow)));
+
     axum::Server::bind(&addr)
-        .serve(app.into_make_service())
+        .serve(app.into_make_service_with_connect_info::<SocketAddr>())
         .with_graceful_shutdown(shutdown_future())
         .await?;
 
@@ -53,10 +63,30 @@ async fn main() -> Result<()> {
 
 async fn notify(
     Extension(handlers): Extension<Arc<Vec<(ImseEvent, String, HandlerSender)>>>,
+    Extension(allowed_ranges): Extension<Arc<Vec<IpNet>>>,
+    ConnectInfo(remote_addr): ConnectInfo<SocketAddr>,
     Json(message): Json<ImseMessage>,
 ) -> impl IntoResponse {
-    tracing::info!("event received: {}::{}", message.event, message.user);
+    if !allowed_ranges.is_empty()
+        && !allowed_ranges
+            .iter()
+            .any(|range| range.contains(&remote_addr.ip()))
+    {
+        tracing::warn!(
+            "event rejected from {}: {}::{}",
+            remote_addr,
+            message.event,
+            message.user
+        );
+        return StatusCode::FORBIDDEN;
+    }
 
+    tracing::info!(
+        "event received from {}: {}::{}",
+        remote_addr,
+        message.event,
+        message.user
+    );
     let message = Arc::new(message);
     for (_, _, handler) in handlers
         .iter()
