@@ -15,6 +15,11 @@ of the form:
 listen = "10.0.0.1:12345"
 allow = [ "10.0.0.2/32" ] # allowed notification ranges (optional)
 
+# optional Basic auth
+[auth]
+user = "foo"
+pass = "bar"
+
 [[handler]]
 event = "MessageNew"
 user = "freaky"

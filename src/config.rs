@@ -10,7 +10,15 @@ pub struct Config {
     pub listen: Option<std::net::SocketAddr>,
     #[serde(default)]
     pub allow: Vec<ipnet::IpNet>,
+    #[serde(default)]
+    pub auth: Option<Auth>,
     pub handler: Vec<Handler>,
+}
+
+#[derive(Deserialize, Debug, Clone)]
+pub struct Auth {
+    pub user: String,
+    pub pass: String,
 }
 
 #[derive(Debug, Clone, Deserialize)]

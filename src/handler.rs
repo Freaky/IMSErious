@@ -6,8 +6,10 @@ use tokio::{
 
 use std::sync::Arc;
 
-use crate::config::SplitCommand;
-use crate::message::{ImseEvent, ImseMessage};
+use crate::{
+    config::SplitCommand,
+    message::{ImseEvent, ImseMessage},
+};
 
 #[derive(Deserialize, Debug, Clone)]
 pub struct Handler {

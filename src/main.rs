@@ -1,5 +1,6 @@
 use anyhow::Result;
 use axum::{
+    error_handling::HandleErrorLayer,
     extract::{extractor_middleware, ConnectInfo, ContentLengthLimit, Extension},
     http::StatusCode,
     response::IntoResponse,
@@ -7,10 +8,11 @@ use axum::{
     Json, Router,
 };
 use ipnet::IpNet;
-use tokio::signal;
+use tokio::{signal, time::Duration};
+use tower::{BoxError, ServiceBuilder};
+use tower_http::{auth::RequireAuthorizationLayer, trace::TraceLayer};
 
-use std::net::SocketAddr;
-use std::sync::Arc;
+use std::{borrow::Cow, net::SocketAddr, sync::Arc};
 
 mod config;
 mod handler;
@@ -48,7 +50,22 @@ async fn main() -> Result<()> {
         .route("/notify", put(notify))
         .layer(Extension(Arc::new(handlers)))
         .layer(Extension(Arc::new(config.allow)))
-        .layer(extractor_middleware::<ContentLengthLimit<(), 1024>>());
+        .layer(extractor_middleware::<ContentLengthLimit<(), 1024>>())
+        .layer(
+            ServiceBuilder::new()
+                // Handle errors from middleware
+                .layer(HandleErrorLayer::new(handle_error))
+                .load_shed()
+                .concurrency_limit(32)
+                .timeout(Duration::from_secs(5))
+                .layer(TraceLayer::new_for_http())
+                .option_layer(
+                    config
+                        .auth
+                        .map(|auth| RequireAuthorizationLayer::basic(&auth.user, &auth.pass)),
+                )
+                .into_inner(),
+        );
 
     axum::Server::bind(&addr)
         .serve(app.into_make_service_with_connect_info::<SocketAddr>())
@@ -97,6 +114,24 @@ async fn notify(
     }
 
     StatusCode::OK
+}
+
+async fn handle_error(error: BoxError) -> impl IntoResponse {
+    if error.is::<tower::timeout::error::Elapsed>() {
+        return (StatusCode::REQUEST_TIMEOUT, Cow::from("request timed out"));
+    }
+
+    if error.is::<tower::load_shed::error::Overloaded>() {
+        return (
+            StatusCode::SERVICE_UNAVAILABLE,
+            Cow::from("service is overloaded, try again later"),
+        );
+    }
+
+    (
+        StatusCode::INTERNAL_SERVER_ERROR,
+        Cow::from(format!("Unhandled internal error: {}", error)),
+    )
 }
 
 async fn shutdown_future() {
