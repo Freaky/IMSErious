@@ -1,8 +1,9 @@
 use anyhow::Result;
 use axum::{
     error_handling::HandleErrorLayer,
-    extract::{extractor_middleware, ConnectInfo, ContentLengthLimit, Extension},
+    extract::{ConnectInfo, ContentLengthLimit, Extension},
     http::StatusCode,
+    middleware::from_extractor,
     response::IntoResponse,
     routing::put,
     Json, Router,
@@ -50,7 +51,7 @@ async fn main() -> Result<()> {
         .route("/notify", put(notify))
         .layer(Extension(Arc::new(handlers)))
         .layer(Extension(Arc::new(config.allow)))
-        .layer(extractor_middleware::<ContentLengthLimit<(), 1024>>())
+        .layer(from_extractor::<ContentLengthLimit<(), 1024>>())
         .layer(
             ServiceBuilder::new()
                 // Handle errors from middleware
