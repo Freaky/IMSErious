@@ -1,4 +1,4 @@
-use anyhow::Result;
+use anyhow::{Context, Result};
 use axum::{
     error_handling::HandleErrorLayer,
     extract::{ConnectInfo, ContentLengthLimit, Extension},
@@ -46,7 +46,15 @@ async fn ip_restriction<B>(
 async fn main() -> Result<()> {
     tracing_subscriber::fmt().without_time().init();
 
-    let config = Config::from_path("/usr/local/etc/imserious.toml")?;
+    let path = std::env::args_os()
+        .nth(1)
+        .unwrap_or_else(|| "/usr/local/etc/imserious.toml".into());
+    let config = Config::from_path(&path).with_context(|| {
+        format!(
+            "Failed to load configuration from {}",
+            path.to_string_lossy()
+        )
+    })?;
 
     let mut handlers = vec![];
     let mut tasks = vec![];

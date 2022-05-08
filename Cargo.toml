@@ -18,6 +18,7 @@ axum = "0.5.3"
 derive_more = "0.99.17"
 humantime-serde = "1.1.1"
 ipnet = { version = "2.5.0", features = ["serde"] }
+read-restrict = "0.3.0"
 serde = { version = "1.0.136", features = ["derive"] }
 serde_json = "1.0.79"
 shell-words = "1.1.0"

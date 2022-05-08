@@ -53,6 +53,9 @@ impl Config {
         P: AsRef<std::path::Path>,
     {
         tracing::debug!("loading config from {}", path.as_ref().display());
-        Ok(toml::from_str(&std::fs::read_to_string(path)?)?)
+        Ok(toml::from_str(&read_restrict::read_to_string(
+            path,
+            1024 * 1024,
+        )?)?)
     }
 }
