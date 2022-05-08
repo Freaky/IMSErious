@@ -14,10 +14,15 @@ or defaulting to `/usr/local/etc/imserious.toml`:
 listen = "10.0.0.1:12345" # optional listen address, default to localhost:12525
 allow = [ "10.0.0.2/32" ] # optional allowed notification IP ranges
 
-# optional Basic auth - note this is sent in clear text
+# optional Basic auth
 [auth]
 user = "foo"
 pass = "bar"
+
+# optional TLS
+[tls]
+cert = "/etc/ssl/foo.example.com.crt"
+key = "/etc/ssl/foo.example.com.key"
 
 [[handler]]
 event = "MessageNew" # Event type, required
