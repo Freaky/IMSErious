@@ -15,6 +15,7 @@ include = ["/src", "README.md", "LICENSE.txt"]
 [dependencies]
 anyhow = "1.0.57"
 axum = "0.5.3"
+axum-server = { version = "0.4.0", features = ["tls-rustls"] }
 derive_more = "0.99.17"
 humantime-serde = "1.1.1"
 ipnet = { version = "2.5.0", features = ["serde"] }

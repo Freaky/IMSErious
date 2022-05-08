@@ -8,6 +8,7 @@ use axum::{
     routing::put,
     Json, Router,
 };
+use axum_server::{tls_rustls::RustlsConfig, Handle};
 use tokio::{signal, time::Duration};
 use tower::{BoxError, ServiceBuilder};
 use tower_http::{auth::RequireAuthorizationLayer, trace::TraceLayer};
@@ -96,10 +97,26 @@ async fn main() -> Result<()> {
                 .into_inner(),
         );
 
-    axum::Server::bind(&addr)
-        .serve(app.into_make_service_with_connect_info::<SocketAddr>())
-        .with_graceful_shutdown(shutdown_future())
-        .await?;
+    if let Some(tls) = config.tls {
+        let handle = Handle::new();
+        let h = handle.clone();
+        tokio::spawn(async move {
+            shutdown_future().await;
+            h.graceful_shutdown(None)
+        });
+        let tls_config = RustlsConfig::from_pem_file(&tls.cert, &tls.key)
+            .await
+            .with_context(|| format!("creating TLS configuration, cert={} key={}", tls.cert, tls.key))?;
+        axum_server::bind_rustls(addr, tls_config)
+            .handle(handle)
+            .serve(app.into_make_service_with_connect_info::<SocketAddr>())
+            .await?;
+    } else {
+        axum::Server::bind(&addr)
+            .serve(app.into_make_service_with_connect_info::<SocketAddr>())
+            .with_graceful_shutdown(shutdown_future())
+            .await?;
+    }
 
     for task in tasks {
         tracing::trace!("handler shutdown {:?}", task.await);

@@ -12,6 +12,8 @@ pub struct Config {
     pub allow: Vec<ipnet::IpNet>,
     #[serde(default)]
     pub auth: Option<Auth>,
+    #[serde(default)]
+    pub tls: Option<TlsConfig>,
     pub handler: Vec<Handler>,
 }
 
@@ -19,6 +21,12 @@ pub struct Config {
 pub struct Auth {
     pub user: String,
     pub pass: String,
+}
+
+#[derive(Deserialize, Debug, Clone)]
+pub struct TlsConfig {
+    pub cert: String,
+    pub key: String,
 }
 
 #[derive(Debug, Clone, Deserialize)]
