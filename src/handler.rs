@@ -34,6 +34,7 @@ impl Handler {
             let max_delay = self.max_delay.unwrap_or(Duration::from_secs(3600));
             let mut next_delay = max_delay;
             let mut last_execution = Instant::now();
+            let mut latest: HandlerPayload = None;
 
             while let Ok(event) = timeout_at(last_execution + next_delay, rx.changed())
                 .await
@@ -41,30 +42,44 @@ impl Handler {
                 .transpose()
             {
                 match event {
-                    Some(_) if last_execution.elapsed() < min_delay => {
-                        tracing::trace!(
-                            "scheduling next wakeup for {}::{}",
-                            self.event,
-                            &self.user
-                        );
-                        next_delay = min_delay;
-                        continue;
+                    Some(_) => {
+                        latest = rx.borrow_and_update().clone();
+                        if last_execution.elapsed() < min_delay {
+                            tracing::trace!(
+                                "scheduling next wakeup for {}::{}",
+                                self.event,
+                                self.user
+                            );
+                            next_delay = min_delay;
+                            continue;
+                        }
                     }
-                    None if self.max_delay.is_none() => continue,
-                    _ => (),
+                    None => {
+                        if latest.is_none() && self.max_delay.is_none() {
+                            continue;
+                        }
+                    }
                 }
 
                 let mut command = self.command.as_tokio_command();
-                command.env("IMSE_USER", &self.user);
-                if let Some(message) = &*rx.borrow() {
+                command
+                    .env("IMSE_USER", &self.user)
+                    .env("IMSE_EVENT", self.event.to_string());
+
+                if let Some(message) = latest.take() {
+                    if let Some(remote) = message.remote_addr {
+                        command
+                            .env("IMSE_REMOTE_IP", remote.ip().to_string())
+                            .env("IMSE_REMOTE_PORT", remote.port().to_string());
+                    }
                     command
-                        .env("IMSE_EVENT", message.event.to_string())
                         .env("IMSE_UNSEEN", message.unseen.to_string())
                         .env("IMSE_FOLDER", &message.folder)
                         .env("IMSE_FROM", message.from.as_deref().unwrap_or(""))
                         .env("IMSE_SNIPPET", message.snippet.as_deref().unwrap_or(""));
                 }
 
+                tracing::trace!("execute for {}::{}: {:?}", self.event, self.user, command);
                 let result = command.status().await;
                 last_execution = Instant::now();
                 if let Ok(result) = result {

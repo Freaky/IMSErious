@@ -3,6 +3,8 @@ use serde::Deserialize;
 
 #[derive(Deserialize, Clone, Debug)]
 pub struct ImseMessage {
+    #[serde(skip)]
+    pub remote_addr: Option<std::net::SocketAddr>,
     pub event: ImseEvent,
     pub user: String,
     pub unseen: u32,

@@ -111,7 +111,7 @@ async fn main() -> Result<()> {
 async fn notify(
     Extension(handlers): Extension<Arc<Vec<(ImseEvent, String, HandlerSender)>>>,
     ConnectInfo(remote_addr): ConnectInfo<SocketAddr>,
-    Json(message): Json<ImseMessage>,
+    Json(mut message): Json<ImseMessage>,
 ) -> impl IntoResponse {
     tracing::info!(
         "event received from {}: {}::{}",
@@ -119,6 +119,7 @@ async fn notify(
         message.event,
         message.user
     );
+    message.remote_addr = Some(remote_addr);
     let message = Arc::new(message);
     for (_, _, handler) in handlers
         .iter()
