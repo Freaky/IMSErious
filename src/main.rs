@@ -2,13 +2,12 @@ use anyhow::Result;
 use axum::{
     error_handling::HandleErrorLayer,
     extract::{ConnectInfo, ContentLengthLimit, Extension},
-    http::StatusCode,
-    middleware::from_extractor,
+    http::{Request, StatusCode},
+    middleware::{self, from_extractor, Next},
     response::IntoResponse,
     routing::put,
     Json, Router,
 };
-use ipnet::IpNet;
 use tokio::{signal, time::Duration};
 use tower::{BoxError, ServiceBuilder};
 use tower_http::{auth::RequireAuthorizationLayer, trace::TraceLayer};
@@ -23,6 +22,25 @@ use crate::{
     handler::HandlerSender,
     message::{ImseEvent, ImseMessage},
 };
+
+async fn ip_restriction<B>(
+    req: Request<B>,
+    next: Next<B>,
+    allowed_ranges: Arc<Vec<ipnet::IpNet>>,
+) -> impl IntoResponse {
+    let ConnectInfo(remote_addr): &ConnectInfo<SocketAddr> =
+        req.extensions().get().expect("ConnectInfo<SocketAddr>");
+    if allowed_ranges.is_empty()
+        || allowed_ranges
+            .iter()
+            .any(|range| range.contains(&remote_addr.ip()))
+    {
+        Ok(next.run(req).await)
+    } else {
+        tracing::warn!("request rejected from {}", remote_addr);
+        Err(StatusCode::FORBIDDEN)
+    }
+}
 
 #[tokio::main(flavor = "current_thread")]
 async fn main() -> Result<()> {
@@ -46,15 +64,15 @@ async fn main() -> Result<()> {
     for net in &config.allow {
         tracing::info!("restricting to {}", net);
     }
+    let allow = Arc::new(config.allow.clone());
 
     let app = Router::new()
         .route("/notify", put(notify))
-        .layer(Extension(Arc::new(handlers)))
-        .layer(Extension(Arc::new(config.allow)))
-        .layer(from_extractor::<ContentLengthLimit<(), 1024>>())
+        .route_layer(middleware::from_fn(move |req, next| {
+            ip_restriction(req, next, allow.clone())
+        }))
         .layer(
             ServiceBuilder::new()
-                // Handle errors from middleware
                 .layer(HandleErrorLayer::new(handle_error))
                 .load_shed()
                 .concurrency_limit(32)
@@ -65,6 +83,8 @@ async fn main() -> Result<()> {
                         .auth
                         .map(|auth| RequireAuthorizationLayer::basic(&auth.user, &auth.pass)),
                 )
+                .layer(Extension(Arc::new(handlers)))
+                .layer(from_extractor::<ContentLengthLimit<(), 1024>>())
                 .into_inner(),
         );
 
@@ -82,24 +102,9 @@ async fn main() -> Result<()> {
 
 async fn notify(
     Extension(handlers): Extension<Arc<Vec<(ImseEvent, String, HandlerSender)>>>,
-    Extension(allowed_ranges): Extension<Arc<Vec<IpNet>>>,
     ConnectInfo(remote_addr): ConnectInfo<SocketAddr>,
     Json(message): Json<ImseMessage>,
 ) -> impl IntoResponse {
-    if !allowed_ranges.is_empty()
-        && !allowed_ranges
-            .iter()
-            .any(|range| range.contains(&remote_addr.ip()))
-    {
-        tracing::warn!(
-            "event rejected from {}: {}::{}",
-            remote_addr,
-            message.event,
-            message.user
-        );
-        return StatusCode::FORBIDDEN;
-    }
-
     tracing::info!(
         "event received from {}: {}::{}",
         remote_addr,
