@@ -6,23 +6,26 @@ description = "Execute commands in response to Internet Message Store Events"
 readme = "README.md"
 repository = "https://github.com/Freaky/IMSErious"
 license = "MIT"
-keywords = [""]
-categories = ["email"]
+keywords = ["api", "automation", "email", "server"]
+categories = ["command-line-utilities", "email"]
 include = ["/src", "README.md", "LICENSE.txt"]
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[package.metadata.docs.rs]
+targets = ["x86_64-unknown-linux-gnu"]
 
 [dependencies]
 anyhow = "1.0.57"
 axum = "0.5.3"
 axum-server = { version = "0.4.0", features = ["tls-rustls"] }
-derive_more = "0.99.17"
 humantime-serde = "1.1.1"
 ipnet = { version = "2.5.0", features = ["serde"] }
 read-restrict = "0.3.0"
 serde = { version = "1.0.136", features = ["derive"] }
 serde_json = "1.0.79"
 shell-words = "1.1.0"
+strum = { version = "0.24.0", features = ["derive"] }
 tokio = { version = "1.17.0", features = ["macros", "net", "process", "rt", "signal", "sync", "time"] }
 toml = "0.5.9"
 tower = { version = "0.4", features = ["util", "timeout", "load-shed", "limit"] }
