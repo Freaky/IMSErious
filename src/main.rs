@@ -106,7 +106,12 @@ async fn main() -> Result<()> {
         });
         let tls_config = RustlsConfig::from_pem_file(&tls.cert, &tls.key)
             .await
-            .with_context(|| format!("creating TLS configuration, cert={} key={}", tls.cert, tls.key))?;
+            .with_context(|| {
+                format!(
+                    "creating TLS configuration, cert={} key={}",
+                    tls.cert, tls.key
+                )
+            })?;
         axum_server::bind_rustls(addr, tls_config)
             .handle(handle)
             .serve(app.into_make_service_with_connect_info::<SocketAddr>())

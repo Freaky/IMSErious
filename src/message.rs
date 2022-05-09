@@ -1,5 +1,5 @@
-use strum::{Display, EnumString};
 use serde::Deserialize;
+use strum::{Display, EnumString};
 
 #[derive(Deserialize, Clone, Debug)]
 pub struct ImseMessage {
