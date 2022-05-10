@@ -1,7 +1,7 @@
 # IMSErious
 
-Execute commands in response to [Internet Message Store Events](rfc5423), as
-sent by Dovecot's [push notifications](XO) Open-Xchange driver.
+Execute commands in response to [Internet Message Store Events][rfc5423], as
+sent by Dovecot's [push notifications][OX] Open-Xchange driver.
 
 This was written specifically to automatically trigger an IMAP IDLE-unaware
 [MRA] on new messages, but could also be used for desktop/mobile notifications,
