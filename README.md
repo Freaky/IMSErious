@@ -11,8 +11,11 @@ IMSErious is configured from a [TOML] file specified as the first argument,
 or defaulting to `/usr/local/etc/imserious.toml`:
 
 ```toml
-listen = "10.0.0.1:12345" # optional listen address, default to localhost:12525
-allow = [ "10.0.0.2/32" ] # optional allowed notification IP ranges
+listen = "10.0.0.1:12525"  # listen address, default 127.0.0.1:12525
+allow = [ "10.0.0.2/32" ]  # allowed notification IP ranges, default all
+endpoint = "/notify"       # path to API endpoint, default /notify
+max_connections = 8        # connection limit, default 8
+timeout = "5s"             # request timeout, default 5s
 
 # optional Basic auth
 [auth]

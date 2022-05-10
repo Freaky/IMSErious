@@ -68,7 +68,7 @@ async fn main() -> Result<()> {
 
     let addr = config
         .listen
-        .unwrap_or(SocketAddr::from(([127, 0, 0, 1], 12525)));
+        .unwrap_or_else(|| SocketAddr::from(([127, 0, 0, 1], 12525)));
     tracing::info!("listening on {}", addr);
     for net in &config.allow {
         tracing::info!("restricting to {}", net);
@@ -76,7 +76,7 @@ async fn main() -> Result<()> {
     let allow = Arc::new(config.allow.clone());
 
     let app = Router::new()
-        .route("/notify", put(notify))
+        .route(config.endpoint.as_deref().unwrap_or("/notify"), put(notify))
         .route_layer(middleware::from_fn(move |req, next| {
             ip_restriction(req, next, allow.clone())
         }))
@@ -84,8 +84,14 @@ async fn main() -> Result<()> {
             ServiceBuilder::new()
                 .layer(HandleErrorLayer::new(handle_error))
                 .load_shed()
-                .concurrency_limit(32)
-                .timeout(Duration::from_secs(5))
+                .concurrency_limit(
+                    config
+                        .max_connections
+                        .or(std::num::NonZeroU16::new(8))
+                        .unwrap()
+                        .get() as usize,
+                )
+                .timeout(config.timeout.unwrap_or(Duration::from_secs(5)))
                 .layer(TraceLayer::new_for_http())
                 .option_layer(
                     config

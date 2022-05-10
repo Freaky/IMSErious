@@ -2,6 +2,8 @@ use anyhow::Result;
 use serde::Deserialize;
 use tokio::process::Command;
 
+use std::{num::NonZeroU16, time::Duration};
+
 use crate::handler::Handler;
 
 #[derive(Deserialize, Debug, Clone)]
@@ -10,6 +12,12 @@ pub struct Config {
     pub listen: Option<std::net::SocketAddr>,
     #[serde(default)]
     pub allow: Vec<ipnet::IpNet>,
+    #[serde(default)]
+    pub endpoint: Option<String>,
+    #[serde(default)]
+    pub max_connections: Option<NonZeroU16>,
+    #[serde(with = "humantime_serde", default)]
+    pub timeout: Option<Duration>,
     #[serde(default)]
     pub auth: Option<Auth>,
     #[serde(default)]
