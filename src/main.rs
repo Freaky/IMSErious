@@ -59,7 +59,7 @@ async fn main() -> Result<()> {
 
     let mut handlers = vec![];
     let mut tasks = vec![];
-    for handler in config.handler.into_iter() {
+    for handler in config.handler {
         tracing::debug!("register handler: {:?}", handler);
         let (tx, task) = handler.clone().into_sender_handle();
         tasks.push(task);
@@ -108,7 +108,7 @@ async fn main() -> Result<()> {
         let h = handle.clone();
         tokio::spawn(async move {
             shutdown_future().await;
-            h.graceful_shutdown(None)
+            h.graceful_shutdown(None);
         });
         let tls_config = RustlsConfig::from_pem_file(&tls.cert, &tls.key)
             .await

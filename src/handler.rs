@@ -95,7 +95,7 @@ impl Handler {
                         self.event,
                         &self.user,
                         result
-                    )
+                    );
                 }
 
                 next_delay = max_delay;
