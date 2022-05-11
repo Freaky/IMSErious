@@ -87,9 +87,8 @@ async fn main() -> Result<()> {
                 .concurrency_limit(
                     config
                         .max_connections
-                        .or(std::num::NonZeroU16::new(8))
-                        .unwrap()
-                        .get() as usize,
+                        .map(|x| x.get())
+                        .unwrap_or(8) as usize,
                 )
                 .timeout(
                     config
