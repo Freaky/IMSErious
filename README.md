@@ -30,9 +30,10 @@ key = "/etc/ssl/foo.example.com.key"
 [[handler]]
 event = "MessageNew" # Event type, required
 user = "freaky"      # Username, required
-limit_period = "30s" # Rate limit executions over this interval, optional
-limit_burst = 1      # Allow this many executions per interval, optional
-periodic = "300s"    # Execute unconditionally after this long, optional
+delay = "5s"         # Delay execution this long after initial event, optional, default none
+limit_period = "30s" # Rate limit executions over this interval, optional, default 30s
+limit_burst = 1      # Allow this many executions per interval, optional, default 1
+periodic = "300s"    # Execute unconditionally after this long, optional, default none
 command = "/usr/local/bin/fdm -a eda -l fetch"
 ```
 

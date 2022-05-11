@@ -1,5 +1,3 @@
-// use futures::future::TryFutureExt;
-use futures::FutureExt;
 use governor::{Quota, RateLimiter};
 use nonzero_ext::nonzero;
 use serde::Deserialize;
@@ -35,9 +33,10 @@ pub type HandlerSender = watch::Sender<HandlerPayload>;
 
 impl Handler {
     async fn task(self, mut rx: watch::Receiver<HandlerPayload>) {
-        let mut last_execution = Instant::now();
-        let mut latest: HandlerPayload = None;
         let period = self.periodic.unwrap_or(Duration::from_secs(3600));
+        let mut next_delay = period;
+        let mut latest: HandlerPayload = None;
+        let mut last_execution = Instant::now();
 
         let quota = Quota::with_period(
             self.limit_period
@@ -46,62 +45,80 @@ impl Handler {
         )
         .expect("Non-zero Duration")
         .allow_burst(self.limit_burst.unwrap_or(nonzero!(1u32)));
-        let limiter = RateLimiter::direct(quota);
+        let clock = governor::clock::MonotonicClock::default();
+        let limiter = RateLimiter::direct_with_clock(quota, &clock);
 
-        while let Ok(event) = timeout_at(
-            last_execution + period,
-            limiter.until_ready().then(|_| rx.changed()),
-        )
-        .await
-        .ok()
-        .transpose()
+        while let Ok(event) = timeout_at(last_execution + next_delay, rx.changed())
+            .await
+            .ok()
+            .transpose()
         {
-            match event {
-                Some(_) => {
-                    latest = rx.borrow_and_update().clone();
+            if event.is_some() {
+                let initial_event = latest.is_none();
+                latest = rx.borrow_and_update().clone();
+                if initial_event {
+                    if let Some(delay) = self.delay {
+                        next_delay = last_execution.elapsed() + delay;
+                        continue;
+                    }
                 }
-                None if latest.is_none() && self.periodic.is_none() => {
+            } else if latest.is_none() && self.periodic.is_none() {
+                // Ignore periodic wakeups if not configured for them
+                continue;
+            }
+
+            // Let periodic execution ignore rate limits
+            if latest.is_some() {
+                if let Err(not_until) = limiter.check() {
+                    next_delay = not_until.wait_time_from(last_execution.into_std());
                     continue;
                 }
-                None => (),
             }
 
-            let mut command = self.command.as_tokio_command();
-            command
-                .env("IMSE_USER", &self.user)
-                .env("IMSE_EVENT", self.event.to_string());
-
-            if let Some(message) = latest.take() {
-                if let Some(remote) = message.remote_addr {
-                    command
-                        .env("IMSE_REMOTE_IP", remote.ip().to_string())
-                        .env("IMSE_REMOTE_PORT", remote.port().to_string());
-                }
-                command
-                    .env("IMSE_UNSEEN", message.unseen.to_string())
-                    .env("IMSE_FOLDER", &message.folder)
-                    .env("IMSE_FROM", message.from.as_deref().unwrap_or(""))
-                    .env("IMSE_SNIPPET", message.snippet.as_deref().unwrap_or(""));
-            }
-
-            tracing::trace!("execute for {}::{}: {:?}", self.event, self.user, command);
-            let result = command.status().await;
+            self.execute_command(latest.take()).await;
             last_execution = Instant::now();
-            if let Ok(result) = result {
-                tracing::info!(
-                    "execution complete for {}::{}: rc={}",
-                    self.event,
-                    &self.user,
-                    result.code().unwrap_or(-1)
-                );
-            } else {
-                tracing::warn!(
-                    "execution failed for {}::{}: status={:?}",
-                    self.event,
-                    &self.user,
-                    result
-                );
+            next_delay = period;
+        }
+    }
+
+    async fn execute_command(&self, message: HandlerPayload) {
+        let mut command = self.command.as_tokio_command();
+        command
+            .env("IMSE_USER", &self.user)
+            .env("IMSE_EVENT", self.event.to_string());
+
+        if let Some(message) = message {
+            if let Some(remote) = message.remote_addr {
+                command
+                    .env("IMSE_REMOTE_IP", remote.ip().to_string())
+                    .env("IMSE_REMOTE_PORT", remote.port().to_string());
             }
+            command
+                .env("IMSE_UNSEEN", message.unseen.to_string())
+                .env("IMSE_FOLDER", &message.folder)
+                .env("IMSE_FROM", message.from.as_deref().unwrap_or(""))
+                .env("IMSE_SNIPPET", message.snippet.as_deref().unwrap_or(""));
+        }
+
+        tracing::trace!("execute for {}::{}: {:?}", self.event, self.user, command);
+        let start = Instant::now();
+        let result = command.status().await;
+        if let Ok(result) = result {
+            tracing::info!(
+                "execution complete for {}::{}: elapsed={:.2?} rc={}",
+                self.event,
+                &self.user,
+                start.elapsed(),
+                result.code().unwrap_or(-1)
+            );
+        } else {
+            tracing::warn!(
+                "execution failed for {}::{}: elapsed={:.2?} status={:?}",
+                self.event,
+                &self.user,
+                start.elapsed(),
+                result
+            );
         }
     }
 
