@@ -84,12 +84,7 @@ async fn main() -> Result<()> {
             ServiceBuilder::new()
                 .layer(HandleErrorLayer::new(handle_error))
                 .load_shed()
-                .concurrency_limit(
-                    config
-                        .max_connections
-                        .map(|x| x.get())
-                        .unwrap_or(8) as usize,
-                )
+                .concurrency_limit(config.max_connections.map(|x| x.get()).unwrap_or(8) as usize)
                 .timeout(
                     config
                         .timeout
@@ -107,13 +102,14 @@ async fn main() -> Result<()> {
                 .into_inner(),
         );
 
+    let handle = Handle::new();
+    let h = handle.clone();
+    tokio::spawn(async move {
+        shutdown_future().await;
+        h.graceful_shutdown(None);
+    });
+
     if let Some(tls) = config.tls {
-        let handle = Handle::new();
-        let h = handle.clone();
-        tokio::spawn(async move {
-            shutdown_future().await;
-            h.graceful_shutdown(None);
-        });
         let tls_config = RustlsConfig::from_pem_file(&tls.cert, &tls.key)
             .await
             .with_context(|| {
@@ -127,9 +123,9 @@ async fn main() -> Result<()> {
             .serve(app.into_make_service_with_connect_info::<SocketAddr>())
             .await?;
     } else {
-        axum::Server::bind(&addr)
+        axum_server::bind(addr)
+            .handle(handle)
             .serve(app.into_make_service_with_connect_info::<SocketAddr>())
-            .with_graceful_shutdown(shutdown_future())
             .await?;
     }
 
