@@ -33,14 +33,17 @@ pub type HandlerSender = watch::Sender<HandlerPayload>;
 
 impl Handler {
     async fn task(self, mut rx: watch::Receiver<HandlerPayload>) {
-        let period = self.periodic.unwrap_or(Duration::from_secs(3600));
+        let period = self
+            .periodic
+            .filter(|d| !d.is_zero())
+            .unwrap_or(Duration::from_secs(3600));
         let mut next_delay = period;
         let mut latest: HandlerPayload = None;
         let mut last_execution = Instant::now();
 
         let quota = Quota::with_period(
             self.limit_period
-                .filter(Duration::is_zero)
+                .filter(|d| !d.is_zero())
                 .unwrap_or(Duration::from_secs(30)),
         )
         .expect("Non-zero Duration")
