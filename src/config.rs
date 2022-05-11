@@ -2,11 +2,14 @@ use anyhow::Result;
 use serde::Deserialize;
 use tokio::process::Command;
 
-use std::{num::NonZeroU16, time::Duration};
+use std::{
+    num::{NonZeroU16, NonZeroU32},
+    time::Duration,
+};
 
-use crate::handler::Handler;
+use crate::message::ImseEvent;
 
-#[derive(Deserialize, Debug, Clone)]
+#[derive(Clone, Debug, Deserialize)]
 pub struct Config {
     #[serde(default)]
     pub listen: Option<std::net::SocketAddr>,
@@ -16,8 +19,8 @@ pub struct Config {
     pub endpoint: Option<String>,
     #[serde(default)]
     pub max_connections: Option<NonZeroU16>,
-    #[serde(with = "humantime_serde", default)]
-    pub timeout: Option<Duration>,
+    #[serde(default)]
+    pub timeout: Option<NonZeroDuration>,
     #[serde(default)]
     pub auth: Option<Auth>,
     #[serde(default)]
@@ -25,19 +28,57 @@ pub struct Config {
     pub handler: Vec<Handler>,
 }
 
-#[derive(Deserialize, Debug, Clone)]
+#[derive(Clone, Debug, Deserialize)]
 pub struct Auth {
     pub user: String,
     pub pass: String,
 }
 
-#[derive(Deserialize, Debug, Clone)]
+#[derive(Clone, Debug, Deserialize)]
 pub struct TlsConfig {
     pub cert: String,
     pub key: String,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Deserialize, Debug, Clone)]
+pub struct Handler {
+    pub event: ImseEvent,
+    pub user: String,
+    #[serde(default)]
+    pub delay: Option<NonZeroDuration>,
+    #[serde(default)]
+    pub limit_period: Option<NonZeroDuration>,
+    #[serde(default)]
+    pub limit_burst: Option<NonZeroU32>,
+    #[serde(default)]
+    pub periodic: Option<NonZeroDuration>,
+    pub command: SplitCommand,
+}
+
+#[derive(Clone, Copy, Debug, Deserialize)]
+#[serde(try_from = "&str")]
+pub struct NonZeroDuration(Duration);
+
+impl TryFrom<&str> for NonZeroDuration {
+    type Error = &'static str;
+
+    fn try_from(string: &str) -> Result<Self, Self::Error> {
+        let d = humantime::parse_duration(&string).map_err(|_| "Error parsing Duration")?;
+        if d.is_zero() {
+            Err("Duration is zero")
+        } else {
+            Ok(Self(d))
+        }
+    }
+}
+
+impl From<NonZeroDuration> for Duration {
+    fn from(dur: NonZeroDuration) -> Duration {
+        dur.0
+    }
+}
+
+#[derive(Clone, Debug, Deserialize)]
 #[serde(try_from = "&str")]
 pub struct SplitCommand(Vec<String>);
 

@@ -91,7 +91,12 @@ async fn main() -> Result<()> {
                         .unwrap()
                         .get() as usize,
                 )
-                .timeout(config.timeout.unwrap_or(Duration::from_secs(5)))
+                .timeout(
+                    config
+                        .timeout
+                        .map(Duration::from)
+                        .unwrap_or(Duration::from_secs(5)),
+                )
                 .layer(TraceLayer::new_for_http())
                 .option_layer(
                     config

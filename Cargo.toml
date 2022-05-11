@@ -21,7 +21,7 @@ axum = "0.5.3"
 axum-server = { version = "0.4.0", features = ["tls-rustls"] }
 futures = "0.3.21"
 governor = "0.4.2"
-humantime-serde = "1.1.1"
+humantime = "2.1.0"
 ipnet = { version = "2.5.0", features = ["serde"] }
 nonzero_ext = "0.3.0"
 read-restrict = "0.3.0"

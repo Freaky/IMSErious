@@ -1,32 +1,13 @@
 use governor::{Quota, RateLimiter};
 use nonzero_ext::nonzero;
-use serde::Deserialize;
 use tokio::{
     sync::watch,
     time::{timeout_at, Duration, Instant},
 };
 
-use std::{num::NonZeroU32, sync::Arc};
+use std::sync::Arc;
 
-use crate::{
-    config::SplitCommand,
-    message::{ImseEvent, ImseMessage},
-};
-
-#[derive(Deserialize, Debug, Clone)]
-pub struct Handler {
-    pub event: ImseEvent,
-    pub user: String,
-    #[serde(default, with = "humantime_serde")]
-    pub delay: Option<Duration>,
-    #[serde(default, with = "humantime_serde")]
-    pub limit_period: Option<Duration>,
-    #[serde(default)]
-    pub limit_burst: Option<NonZeroU32>,
-    #[serde(default, with = "humantime_serde")]
-    pub periodic: Option<Duration>,
-    pub command: SplitCommand,
-}
+use crate::{config::Handler, message::ImseMessage};
 
 pub type HandlerPayload = Option<Arc<ImseMessage>>;
 pub type HandlerSender = watch::Sender<HandlerPayload>;
@@ -35,15 +16,15 @@ impl Handler {
     async fn task(self, mut rx: watch::Receiver<HandlerPayload>) {
         let period = self
             .periodic
-            .filter(|d| !d.is_zero())
+            .map(Duration::from)
             .unwrap_or(Duration::from_secs(3600));
-        let mut next_delay = period;
+        let mut next_delay = period.into();
         let mut latest: HandlerPayload = None;
         let mut last_execution = Instant::now();
 
         let quota = Quota::with_period(
             self.limit_period
-                .filter(|d| !d.is_zero())
+                .map(Duration::from)
                 .unwrap_or(Duration::from_secs(30)),
         )
         .expect("Non-zero Duration")
@@ -61,7 +42,7 @@ impl Handler {
                 latest = rx.borrow_and_update().clone();
                 if initial_event {
                     if let Some(delay) = self.delay {
-                        next_delay = last_execution.elapsed() + delay;
+                        next_delay = last_execution.elapsed() + Duration::from(delay);
                         continue;
                     }
                 }
