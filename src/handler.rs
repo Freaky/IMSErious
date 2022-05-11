@@ -1,10 +1,14 @@
+// use futures::future::TryFutureExt;
+use futures::FutureExt;
+use governor::{Quota, RateLimiter};
+use nonzero_ext::nonzero;
 use serde::Deserialize;
 use tokio::{
     sync::watch,
     time::{timeout_at, Duration, Instant},
 };
 
-use std::sync::Arc;
+use std::{num::NonZeroU32, sync::Arc};
 
 use crate::{
     config::SplitCommand,
@@ -15,10 +19,14 @@ use crate::{
 pub struct Handler {
     pub event: ImseEvent,
     pub user: String,
-    #[serde(with = "humantime_serde")]
-    pub min_delay: Duration,
     #[serde(default, with = "humantime_serde")]
-    pub max_delay: Option<Duration>,
+    pub delay: Option<Duration>,
+    #[serde(default, with = "humantime_serde")]
+    pub limit_period: Option<Duration>,
+    #[serde(default)]
+    pub limit_burst: Option<NonZeroU32>,
+    #[serde(default, with = "humantime_serde")]
+    pub periodic: Option<Duration>,
     pub command: SplitCommand,
 }
 
@@ -27,35 +35,35 @@ pub type HandlerSender = watch::Sender<HandlerPayload>;
 
 impl Handler {
     async fn task(self, mut rx: watch::Receiver<HandlerPayload>) {
-        let min_delay = self.min_delay;
-        let max_delay = self.max_delay.unwrap_or(Duration::from_secs(3600));
-        let mut next_delay = max_delay;
         let mut last_execution = Instant::now();
         let mut latest: HandlerPayload = None;
+        let period = self.periodic.unwrap_or(Duration::from_secs(3600));
 
-        while let Ok(event) = timeout_at(last_execution + next_delay, rx.changed())
-            .await
-            .ok()
-            .transpose()
+        let quota = Quota::with_period(
+            self.limit_period
+                .filter(Duration::is_zero)
+                .unwrap_or(Duration::from_secs(30)),
+        )
+        .expect("Non-zero Duration")
+        .allow_burst(self.limit_burst.unwrap_or(nonzero!(1u32)));
+        let limiter = RateLimiter::direct(quota);
+
+        while let Ok(event) = timeout_at(
+            last_execution + period,
+            limiter.until_ready().then(|_| rx.changed()),
+        )
+        .await
+        .ok()
+        .transpose()
         {
             match event {
                 Some(_) => {
                     latest = rx.borrow_and_update().clone();
-                    if last_execution.elapsed() < min_delay {
-                        tracing::trace!(
-                            "scheduling next wakeup for {}::{}",
-                            self.event,
-                            self.user
-                        );
-                        next_delay = min_delay;
-                        continue;
-                    }
                 }
-                None => {
-                    if latest.is_none() && self.max_delay.is_none() {
-                        continue;
-                    }
+                None if latest.is_none() && self.periodic.is_none() => {
+                    continue;
                 }
+                None => (),
             }
 
             let mut command = self.command.as_tokio_command();
@@ -94,8 +102,6 @@ impl Handler {
                     result
                 );
             }
-
-            next_delay = max_delay;
         }
     }
 

@@ -30,8 +30,9 @@ key = "/etc/ssl/foo.example.com.key"
 [[handler]]
 event = "MessageNew" # Event type, required
 user = "freaky"      # Username, required
-min_delay = "30s"    # Minimum duration between command executions, required
-max_delay = "300s"   # Maximum duration between command executions, optional
+limit_period = "30s" # Rate limit executions over this interval, optional
+limit_burst = 1      # Allow this many executions per interval, optional
+periodic = "300s"    # Execute unconditionally after this long, optional
 command = "/usr/local/bin/fdm -a eda -l fetch"
 ```
 
@@ -40,8 +41,8 @@ even repeated for the same user and event to trigger multiple programs on differ
 schedules.
 
 In this example a `MessageNew` notification for user `freaky` will trigger `fdm` to
-fetch email from the named account `eda` at most every 30 seconds, and will trigger
-every 300 seconds regardless of whether there has been an event or not.
+fetch email from the named account `eda` at most once every 30 seconds, and will
+trigger every 300 seconds regardless of whether there has been an event or not.
 
 `command` does not support shell metacharacters other than basic word splitting and
 quotes, though you could execute a command via a shell such as `/bin/sh -c` to
