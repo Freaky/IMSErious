@@ -65,6 +65,7 @@ impl Handler {
         }
     }
 
+    #[tracing::instrument(skip_all, fields(event=%self.event, user=%self.user, prog=%self.command.get_prog()))]
     async fn execute_command(&self, message: HandlerPayload) {
         let mut command = self.command.as_tokio_command();
         command
@@ -84,25 +85,13 @@ impl Handler {
                 .env("IMSE_SNIPPET", message.snippet.as_deref().unwrap_or(""));
         }
 
-        tracing::trace!("execute for {}::{}: {:?}", self.event, self.user, command);
+        tracing::trace!(exec=%command.as_std().get_program().to_string_lossy());
         let start = Instant::now();
         let result = command.status().await;
         if let Ok(result) = result {
-            tracing::info!(
-                "execution complete for {}::{}: elapsed={:.2?} rc={}",
-                self.event,
-                &self.user,
-                start.elapsed(),
-                result.code().unwrap_or(-1)
-            );
+            tracing::info!(elapsed_ms=%start.elapsed().as_millis(), rc=result.code().unwrap_or(-1));
         } else {
-            tracing::warn!(
-                "execution failed for {}::{}: elapsed={:.2?} status={:?}",
-                self.event,
-                &self.user,
-                start.elapsed(),
-                result
-            );
+            tracing::error!(status=?result);
         }
     }
 

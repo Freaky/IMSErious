@@ -24,6 +24,7 @@ use crate::{
     message::{ImseEvent, ImseMessage},
 };
 
+#[tracing::instrument(skip_all)]
 async fn ip_restriction<B>(
     req: Request<B>,
     next: Next<B>,
@@ -38,14 +39,18 @@ async fn ip_restriction<B>(
     {
         Ok(next.run(req).await)
     } else {
-        tracing::warn!("request rejected from {}", remote_addr);
+        tracing::warn!(%remote_addr, method=%req.method(), uri=%req.uri());
         Err(StatusCode::FORBIDDEN)
     }
 }
 
 #[tokio::main(flavor = "current_thread")]
 async fn main() -> Result<()> {
-    tracing_subscriber::fmt().without_time().init();
+    tracing_subscriber::fmt()
+        .without_time()
+        .with_target(false)
+        .compact()
+        .init();
 
     let path = std::env::args_os()
         .nth(1)
@@ -69,9 +74,9 @@ async fn main() -> Result<()> {
     let addr = config
         .listen
         .unwrap_or_else(|| SocketAddr::from(([127, 0, 0, 1], 12525)));
-    tracing::info!("listening on {}", addr);
+    tracing::info!(listen=%addr);
     for net in &config.allow {
-        tracing::info!("restricting to {}", net);
+        tracing::info!(restrict=%net);
     }
     let allow = Arc::new(config.allow.clone());
 
@@ -136,17 +141,13 @@ async fn main() -> Result<()> {
     Ok(())
 }
 
+#[tracing::instrument(skip_all)]
 async fn notify(
     Extension(handlers): Extension<Arc<Vec<(ImseEvent, String, HandlerSender)>>>,
     ConnectInfo(remote_addr): ConnectInfo<SocketAddr>,
     Json(mut message): Json<ImseMessage>,
 ) -> impl IntoResponse {
-    tracing::info!(
-        "event received from {}: {}::{}",
-        remote_addr,
-        message.event,
-        message.user
-    );
+    tracing::info!(%remote_addr, event=?message.event, user=%message.user);
     message.remote_addr = Some(remote_addr);
     let message = Arc::new(message);
     for (_, _, handler) in handlers

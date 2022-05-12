@@ -108,6 +108,10 @@ impl SplitCommand {
         }
         command
     }
+
+    pub fn get_prog(&self) -> &str {
+        &self.0[0]
+    }
 }
 
 impl Config {
@@ -115,7 +119,7 @@ impl Config {
     where
         P: AsRef<std::path::Path>,
     {
-        tracing::debug!("loading config from {}", path.as_ref().display());
+        tracing::debug!(config=%path.as_ref().display());
         Ok(toml::from_str(&read_restrict::read_to_string(
             path,
             1024 * 1024,
