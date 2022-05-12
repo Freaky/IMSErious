@@ -18,10 +18,10 @@ impl Handler {
             .periodic
             .map(Duration::from)
             .unwrap_or(Duration::from_secs(3600));
-        let mut next_delay = period;
         let mut latest: HandlerPayload = None;
-        let mut last_execution = Instant::now();
-        let mut last_burst = Instant::now();
+        let mut now = Instant::now();
+        let mut last_burst = now;
+        let mut deadline = now + period;
 
         let quota = Quota::with_period(
             self.limit_period
@@ -33,22 +33,17 @@ impl Handler {
         let clock = governor::clock::MonotonicClock::default();
         let limiter = RateLimiter::direct_with_clock(quota, &clock);
 
-        while let Ok(event) = timeout_at(last_execution + next_delay, rx.changed())
-            .await
-            .ok()
-            .transpose()
-        {
+        while let Ok(event) = timeout_at(deadline, rx.changed()).await.ok().transpose() {
+            now = Instant::now();
             if event.is_some() {
                 if latest.is_none() {
-                    last_burst = Instant::now();
+                    last_burst = now;
                 }
                 latest = rx.borrow_and_update().clone();
 
                 if let Some(delay) = self.delay {
-                    let delay = delay.into_std();
-                    let elapsed = last_burst.elapsed();
-                    if elapsed < delay {
-                        next_delay = last_burst.duration_since(last_execution) + (delay - elapsed);
+                    if let Some(delay) = delay.into_std().checked_sub(last_burst.elapsed()) {
+                        deadline = now + delay;
                         continue;
                     }
                 }
@@ -60,14 +55,13 @@ impl Handler {
             // Let periodic execution ignore rate limits
             if latest.is_some() {
                 if let Err(not_until) = limiter.check() {
-                    next_delay = not_until.wait_time_from(last_execution.into_std());
+                    deadline = not_until.earliest_possible().into();
                     continue;
                 }
             }
 
             self.execute_command(latest.take()).await;
-            last_execution = Instant::now();
-            next_delay = period;
+            deadline = Instant::now() + period;
         }
     }
 
