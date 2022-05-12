@@ -63,7 +63,7 @@ impl TryFrom<&str> for NonZeroDuration {
     type Error = &'static str;
 
     fn try_from(string: &str) -> Result<Self, Self::Error> {
-        let d = humantime::parse_duration(&string).map_err(|_| "Error parsing Duration")?;
+        let d = humantime::parse_duration(string).map_err(|_| "Error parsing Duration")?;
         if d.is_zero() {
             Err("Duration is zero")
         } else {

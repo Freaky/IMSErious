@@ -18,7 +18,7 @@ impl Handler {
             .periodic
             .map(Duration::from)
             .unwrap_or(Duration::from_secs(3600));
-        let mut next_delay = period.into();
+        let mut next_delay = period;
         let mut latest: HandlerPayload = None;
         let mut last_execution = Instant::now();
 
