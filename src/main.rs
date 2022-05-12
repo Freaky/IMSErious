@@ -52,9 +52,15 @@ async fn main() -> Result<()> {
         .compact()
         .init();
 
-    tracing::info!(action="start", name=env!("CARGO_PKG_NAME"), version=env!("CARGO_PKG_VERSION"));
+    tracing::info!(action=%"start", name=%env!("CARGO_PKG_NAME"), version=%env!("CARGO_PKG_VERSION"));
     let res = run().await;
-    tracing::info!(action="exit", status=?res);
+    if let Err(ref error) = res {
+        tracing::error!(%error);
+        for error_cause in error.chain().skip(1) {
+            tracing::error!(%error_cause);
+        }
+    }
+    tracing::info!(action=%"exit");
     res
 }
 
@@ -142,7 +148,7 @@ async fn run() -> Result<()> {
     }
 
     for task in tasks {
-        tracing::trace!("handler shutdown {:?}", task.await);
+        task.await?;
     }
 
     Ok(())
@@ -204,7 +210,7 @@ async fn shutdown_future() {
     let terminate = std::future::pending::<()>();
 
     tokio::select! {
-        _ = ctrl_c => tracing::info!(signal="interrupt"),
-        _ = terminate => tracing::info!(signal="terminate"),
+        _ = ctrl_c => tracing::info!(signal=%"interrupt"),
+        _ = terminate => tracing::info!(signal=%"terminate"),
     }
 }
