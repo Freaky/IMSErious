@@ -60,13 +60,13 @@ impl Handler {
                 }
             }
 
-            self.execute_command(latest.take()).await;
+            self.execute(latest.take()).await;
             deadline = Instant::now() + period;
         }
     }
 
     #[tracing::instrument(skip_all, fields(event=%self.event, user=%self.user, prog=%self.command.get_prog()))]
-    async fn execute_command(&self, message: HandlerPayload) {
+    async fn execute(&self, message: HandlerPayload) {
         let mut command = self.command.as_tokio_command();
         command
             .env("IMSE_USER", &self.user)
@@ -85,7 +85,6 @@ impl Handler {
                 .env("IMSE_SNIPPET", message.snippet.as_deref().unwrap_or(""));
         }
 
-        tracing::trace!(exec=%command.as_std().get_program().to_string_lossy());
         let start = Instant::now();
         let result = command.status().await;
         if let Ok(result) = result {

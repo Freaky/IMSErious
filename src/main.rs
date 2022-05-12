@@ -24,7 +24,6 @@ use crate::{
     message::{ImseEvent, ImseMessage},
 };
 
-#[tracing::instrument(skip_all)]
 async fn ip_restriction<B>(
     req: Request<B>,
     next: Next<B>,
@@ -39,7 +38,7 @@ async fn ip_restriction<B>(
     {
         Ok(next.run(req).await)
     } else {
-        tracing::warn!(%remote_addr, method=%req.method(), uri=%req.uri());
+        tracing::warn!(reject_addr=%remote_addr, method=%req.method(), uri=%req.uri());
         Err(StatusCode::FORBIDDEN)
     }
 }
@@ -49,9 +48,17 @@ async fn main() -> Result<()> {
     tracing_subscriber::fmt()
         .without_time()
         .with_target(false)
+        .with_level(false)
         .compact()
         .init();
 
+    tracing::info!(action="start", name=env!("CARGO_PKG_NAME"), version=env!("CARGO_PKG_VERSION"));
+    let res = run().await;
+    tracing::info!(action="exit", status=?res);
+    res
+}
+
+async fn run() -> Result<()> {
     let path = std::env::args_os()
         .nth(1)
         .unwrap_or_else(|| "/usr/local/etc/imserious.toml".into());
@@ -71,13 +78,6 @@ async fn main() -> Result<()> {
         handlers.push((handler.event, handler.user, tx));
     }
 
-    let addr = config
-        .listen
-        .unwrap_or_else(|| SocketAddr::from(([127, 0, 0, 1], 12525)));
-    tracing::info!(listen=%addr);
-    for net in &config.allow {
-        tracing::info!(restrict=%net);
-    }
     let allow = Arc::new(config.allow.clone());
 
     let app = Router::new()
@@ -111,8 +111,14 @@ async fn main() -> Result<()> {
     let h = handle.clone();
     tokio::spawn(async move {
         shutdown_future().await;
-        h.graceful_shutdown(None);
+        h.shutdown();
     });
+
+    let addr = config
+        .listen
+        .unwrap_or_else(|| SocketAddr::from(([127, 0, 0, 1], 12525)));
+
+    tracing::info!(listen=%addr, tls=config.tls.is_some());
 
     if let Some(tls) = config.tls {
         let tls_config = RustlsConfig::from_pem_file(&tls.cert, &tls.key)
@@ -123,6 +129,7 @@ async fn main() -> Result<()> {
                     tls.cert, tls.key
                 )
             })?;
+
         axum_server::bind_rustls(addr, tls_config)
             .handle(handle)
             .serve(app.into_make_service_with_connect_info::<SocketAddr>())
@@ -197,7 +204,7 @@ async fn shutdown_future() {
     let terminate = std::future::pending::<()>();
 
     tokio::select! {
-        _ = ctrl_c => tracing::info!("signal: SIGINT"),
-        _ = terminate => tracing::info!("signal: SIGTERM"),
+        _ = ctrl_c => tracing::info!(signal="interrupt"),
+        _ = terminate => tracing::info!(signal="terminate"),
     }
 }
