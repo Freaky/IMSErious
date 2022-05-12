@@ -82,9 +82,6 @@ async fn main() -> Result<()> {
 
     let app = Router::new()
         .route(config.endpoint.as_deref().unwrap_or("/notify"), put(notify))
-        .route_layer(middleware::from_fn(move |req, next| {
-            ip_restriction(req, next, allow.clone())
-        }))
         .layer(
             ServiceBuilder::new()
                 .layer(HandleErrorLayer::new(handle_error))
@@ -105,7 +102,10 @@ async fn main() -> Result<()> {
                 .layer(Extension(Arc::new(handlers)))
                 .layer(from_extractor::<ContentLengthLimit<(), 1024>>())
                 .into_inner(),
-        );
+        )
+        .route_layer(middleware::from_fn(move |req, next| {
+            ip_restriction(req, next, allow.clone())
+        }));
 
     let handle = Handle::new();
     let h = handle.clone();
