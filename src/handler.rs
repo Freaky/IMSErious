@@ -21,6 +21,7 @@ impl Handler {
         let mut next_delay = period;
         let mut latest: HandlerPayload = None;
         let mut last_execution = Instant::now();
+        let mut last_burst = Instant::now();
 
         let quota = Quota::with_period(
             self.limit_period
@@ -38,11 +39,16 @@ impl Handler {
             .transpose()
         {
             if event.is_some() {
-                let initial_event = latest.is_none();
+                if latest.is_none() {
+                    last_burst = Instant::now();
+                }
                 latest = rx.borrow_and_update().clone();
-                if initial_event {
-                    if let Some(delay) = self.delay {
-                        next_delay = last_execution.elapsed() + Duration::from(delay);
+
+                if let Some(delay) = self.delay {
+                    let delay = delay.into_std();
+                    let elapsed = last_burst.elapsed();
+                    if elapsed < delay {
+                        next_delay = last_burst.duration_since(last_execution) + (delay - elapsed);
                         continue;
                     }
                 }

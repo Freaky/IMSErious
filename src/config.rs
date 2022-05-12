@@ -78,6 +78,12 @@ impl From<NonZeroDuration> for Duration {
     }
 }
 
+impl NonZeroDuration {
+    pub fn into_std(self) -> Duration {
+        self.0
+    }
+}
+
 #[derive(Clone, Debug, Deserialize)]
 #[serde(try_from = "&str")]
 pub struct SplitCommand(Vec<String>);
