@@ -1,14 +1,24 @@
 # IMSErious
 
-Execute commands in response to [Internet Message Store Events][rfc5423], as
-sent by Dovecot's [push notifications][OX] Open-Xchange driver.
+Execute commands in response to Dovecot [Internet Message Store Events][rfc5423].
 
-This was written specifically to automatically trigger an IMAP IDLE-unaware
-[MRA] on new messages, but could also be used for desktop/mobile notifications,
-or whatever else you could do by executing commands.
+## Synopsis
+
+```
+imserious [file]
+```
+
+## Summary
+
+IMSErious is a service that listens for Dovecot push notification events,
+as sent by its [OX (Open-Xchange) driver][OX], and executes commands in response.
+This allows, for example, waking up an [MRA] or issuing desktop notifications
+on new messages.
+
+## Configuration
 
 IMSErious is configured from a [TOML] file specified as the first argument,
-or defaulting to `/usr/local/etc/imserious.toml`:
+defaulting to `/usr/local/etc/imserious.toml`:
 
 ```toml
 listen = "10.0.0.1:12525"  # listen address, default 127.0.0.1:12525
@@ -27,6 +37,15 @@ pass = "bar"
 cert = "/etc/ssl/foo.example.com.crt"
 key = "/etc/ssl/foo.example.com.key"
 
+# optional stdout logging
+[log]
+level = "info"        # One of error, warn, info (default), debug, trace
+format = "compact"    # One of full (default), compact, pretty, json
+ansi = false          # Format "pretty" with ANSI codes, default false
+timestamp = false     # Display a timestamp, default false
+target = false        # Display the log target, default false
+display_level = false # Display the log level, default false
+
 [[handler]]
 event = "MessageNew" # Event type, required
 user = "freaky"      # Username, required
@@ -37,20 +56,20 @@ periodic = "300s"    # Execute unconditionally after this long, optional, defaul
 command = "/usr/local/bin/fdm -a eda -l fetch"
 ```
 
-The `[[handler]]` section may be repeated for multiple users and events, and
-even repeated for the same user and event to trigger multiple programs on different
-schedules.
+## Handlers
 
-In this example a `MessageNew` notification for user `freaky` will trigger `fdm` to
-fetch email from the named account `eda` at most once every 30 seconds, and will
-trigger every 300 seconds regardless of whether there has been an event or not.
+A handler is a command to execute in response to a specific event/user pair.  As
+of this time only `MessageNew` events have been tested, though other types are
+supported at least in principle.
 
-`command` does not support shell metacharacters other than basic word splitting and
-quotes, though you could execute a command via a shell such as `/bin/sh -c` to
-gain this.  Please do so with care.
+Handlers may be repeated for the same event and user, enabling the triggering of multiple
+actions from a single event with their own delays, rate limits and periodic configurations.
+
+Commands only support basic shell word splitting and quoting - if shell metacharacters
+are required they should be provided by executing via a shell such as with `/bin/sh -c`.
 
 Event fields will be exposed in `IMSE_*` env vars if available - only `IMSE_USER`
-and `IMSE_EVENT`are guaranteed to be set if max_delay is specified.
+and `IMSE_EVENT`are guaranteed to be set if `periodic` execution is specified.
 
 * `IMSE_USER` - user being notified
 * `IMSE_EVENT` - event name
@@ -60,6 +79,16 @@ and `IMSE_EVENT`are guaranteed to be set if max_delay is specified.
 * `IMSE_FOLDER` - IMAP folder name
 * `IMSE_FROM` - `From:` address of a new email (if any)
 * `IMSE_SNIPPET` - a sample of the body of a new email (if any)
+
+## Security
+
+It should not need to be said that there are potentially serious security implications
+from allowing remote clients to trigger commands on your server.  While every effort
+has been made to limit the potential for harm, it is your responsibility not to use
+this program unsafely.
+
+It is strongly discouraged to run an open instance of IMSErious on a public network,
+or as a privileged user.
 
 [rfc5423]: https://www.rfc-editor.org/rfc/rfc5423.html
 [OX]: https://doc.dovecot.org/configuration_manual/push_notification/
