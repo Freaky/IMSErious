@@ -77,7 +77,7 @@ async fn main() -> Result<()> {
         }
     }
 
-    tracing::info!(action=%"start", name=%env!("CARGO_PKG_NAME"), version=%env!("CARGO_PKG_VERSION"));
+    tracing::info!(message=%"start", name=%env!("CARGO_PKG_NAME"), version=%env!("CARGO_PKG_VERSION"));
     let res = run(config).await;
     if let Err(ref error) = res {
         tracing::error!(%error);
@@ -85,7 +85,7 @@ async fn main() -> Result<()> {
             tracing::error!(%error_cause);
         }
     }
-    tracing::info!(action=%"exit");
+    tracing::info!(message=%"exit");
     res
 }
 
@@ -139,7 +139,7 @@ async fn run(config: Config) -> Result<()> {
         .listen
         .unwrap_or_else(|| SocketAddr::from(([127, 0, 0, 1], 12525)));
 
-    tracing::info!(listen=%addr, tls=config.tls.is_some());
+    tracing::info!(message=%"listen", %addr, tls=config.tls.is_some());
 
     if let Some(tls) = config.tls {
         let tls_config = RustlsConfig::from_pem_file(&tls.cert, &tls.key)
