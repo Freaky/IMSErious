@@ -19,7 +19,7 @@ mod config;
 mod handler;
 mod message;
 use crate::{
-    config::Config,
+    config::{Config, LoggingFormat},
     handler::HandlerSender,
     message::{ImseEvent, ImseMessage},
 };
@@ -45,26 +45,6 @@ async fn ip_restriction<B>(
 
 #[tokio::main(flavor = "current_thread")]
 async fn main() -> Result<()> {
-    tracing_subscriber::fmt()
-        .without_time()
-        .with_target(false)
-        .with_level(false)
-        .compact()
-        .init();
-
-    tracing::info!(action=%"start", name=%env!("CARGO_PKG_NAME"), version=%env!("CARGO_PKG_VERSION"));
-    let res = run().await;
-    if let Err(ref error) = res {
-        tracing::error!(%error);
-        for error_cause in error.chain().skip(1) {
-            tracing::error!(%error_cause);
-        }
-    }
-    tracing::info!(action=%"exit");
-    res
-}
-
-async fn run() -> Result<()> {
     let path = std::env::args_os()
         .nth(1)
         .unwrap_or_else(|| "/usr/local/etc/imserious.toml".into());
@@ -75,6 +55,41 @@ async fn run() -> Result<()> {
         )
     })?;
 
+    let trace = tracing_subscriber::fmt()
+        .with_target(config.log.target)
+        .with_level(config.log.display_level)
+        .with_ansi(config.log.ansi)
+        .with_max_level(config.log.level.inner());
+
+    if config.log.timestamp {
+        match config.log.format {
+            LoggingFormat::Full => trace.init(),
+            LoggingFormat::Compact => trace.compact().init(),
+            LoggingFormat::Pretty => trace.pretty().init(),
+            LoggingFormat::Json => trace.json().init(),
+        }
+    } else {
+        match config.log.format {
+            LoggingFormat::Full => trace.without_time().init(),
+            LoggingFormat::Compact => trace.without_time().compact().init(),
+            LoggingFormat::Pretty => trace.without_time().pretty().init(),
+            LoggingFormat::Json => trace.without_time().json().init(),
+        }
+    }
+
+    tracing::info!(action=%"start", name=%env!("CARGO_PKG_NAME"), version=%env!("CARGO_PKG_VERSION"));
+    let res = run(config).await;
+    if let Err(ref error) = res {
+        tracing::error!(%error);
+        for error_cause in error.chain().skip(1) {
+            tracing::error!(%error_cause);
+        }
+    }
+    tracing::info!(action=%"exit");
+    res
+}
+
+async fn run(config: Config) -> Result<()> {
     let mut handlers = vec![];
     let mut tasks = vec![];
     for handler in config.handler {
