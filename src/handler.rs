@@ -84,12 +84,12 @@ impl Handler {
         }
 
         let start = Instant::now();
-        tracing::info!(message=%"spawn");
+        tracing::info!("spawn");
         let result = command.status().await;
         if let Ok(result) = result {
-            tracing::info!(message=%"complete", elapsed_ms=%start.elapsed().as_millis(), rc=result.code().unwrap_or(-1));
+            tracing::info!(elapsed_ms=%start.elapsed().as_millis(), rc=result.code().unwrap_or(-1), "complete");
         } else {
-            tracing::error!(message=%"failure", status=?result);
+            tracing::error!(status=?result, "failure");
         }
     }
 

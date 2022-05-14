@@ -38,7 +38,7 @@ async fn ip_restriction<B>(
     {
         Ok(next.run(req).await)
     } else {
-        tracing::warn!(reject_addr=%remote_addr, method=%req.method(), uri=%req.uri());
+        tracing::warn!(%remote_addr, method=%req.method(), uri=%req.uri(), "reject");
         Err(StatusCode::FORBIDDEN)
     }
 }
@@ -77,7 +77,7 @@ async fn main() -> Result<()> {
         }
     }
 
-    tracing::info!(message=%"start", name=%env!("CARGO_PKG_NAME"), version=%env!("CARGO_PKG_VERSION"));
+    tracing::info!(name=%env!("CARGO_PKG_NAME"), version=%env!("CARGO_PKG_VERSION"), "start");
     let res = run(config).await;
     if let Err(ref error) = res {
         tracing::error!(%error);
@@ -85,7 +85,7 @@ async fn main() -> Result<()> {
             tracing::error!(%error_cause);
         }
     }
-    tracing::info!(message=%"exit");
+    tracing::info!("exit");
     res
 }
 
@@ -93,7 +93,7 @@ async fn run(config: Config) -> Result<()> {
     let mut handlers = vec![];
     let mut tasks = vec![];
     for handler in config.handler {
-        tracing::debug!("register handler: {:?}", handler);
+        tracing::debug!(?handler, "register_handler");
         let (tx, task) = handler.clone().into_sender_handle();
         tasks.push(task);
         handlers.push((handler.event, handler.user, tx));
@@ -138,7 +138,7 @@ async fn run(config: Config) -> Result<()> {
         .listen
         .unwrap_or_else(|| SocketAddr::from(([127, 0, 0, 1], 12525)));
 
-    tracing::info!(message=%"listen", %addr, tls=config.tls.is_some());
+    tracing::info!(%addr, tls=config.tls.is_some(), "listen");
 
     if let Some(tls) = config.tls {
         let tls_config = RustlsConfig::from_pem_file(&tls.cert, &tls.key)
@@ -186,12 +186,12 @@ async fn tls_reload(config: RustlsConfig, tls: crate::config::TlsConfig) {
             Ok(_) => {
                 fails = 0;
                 delay = period;
-                tracing::info!(message=%"tls", reload=%"success", next=?delay);
+                tracing::info!(reload=%"success", next=?delay, "tls");
             }
             Err(e) => {
                 fails += 1;
                 delay = Duration::from_secs(60 * std::cmp::min(15, fails));
-                tracing::error!(message=%"tls", reload=%"error", retry=?delay, error=%e);
+                tracing::error!(reload=%"error", retry=?delay, error=%e, "tls");
             }
         }
     }
@@ -253,7 +253,7 @@ async fn shutdown_future() {
     let terminate = std::future::pending::<()>();
 
     tokio::select! {
-        _ = ctrl_c => tracing::info!(signal=%"interrupt"),
-        _ = terminate => tracing::info!(signal=%"terminate"),
+        _ = ctrl_c => tracing::info!(kind=%"interrupt", "signal"),
+        _ = terminate => tracing::info!(kind=%"terminate", "signal"),
     }
 }
