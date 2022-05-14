@@ -107,12 +107,11 @@ async fn run(config: Config) -> Result<()> {
             ServiceBuilder::new()
                 .layer(HandleErrorLayer::new(handle_error))
                 .load_shed()
-                .concurrency_limit(config.max_connections.map(|x| x.get()).unwrap_or(8) as usize)
+                .concurrency_limit(config.max_connections.map_or(8, |x| x.get()) as usize)
                 .timeout(
                     config
                         .timeout
-                        .map(Duration::from)
-                        .unwrap_or(Duration::from_secs(5)),
+                        .map_or(Duration::from_secs(5), Duration::from)
                 )
                 .layer(TraceLayer::new_for_http())
                 .option_layer(

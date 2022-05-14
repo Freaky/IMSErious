@@ -16,8 +16,7 @@ impl Handler {
     async fn task(self, mut rx: watch::Receiver<HandlerPayload>) {
         let period = self
             .periodic
-            .map(Duration::from)
-            .unwrap_or(Duration::from_secs(3600));
+            .map_or(Duration::from_secs(3600), Duration::from);
         let mut latest: HandlerPayload = None;
         let mut now = Instant::now();
         let mut last_burst = now;
@@ -25,8 +24,7 @@ impl Handler {
 
         let quota = Quota::with_period(
             self.limit_period
-                .map(Duration::from)
-                .unwrap_or(Duration::from_secs(30)),
+                .map_or(Duration::from_secs(30), Duration::from)
         )
         .expect("Non-zero Duration")
         .allow_burst(self.limit_burst.unwrap_or(nonzero!(1u32)));
