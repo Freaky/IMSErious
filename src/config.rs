@@ -98,6 +98,8 @@ pub struct Auth {
 pub struct TlsConfig {
     pub cert: String,
     pub key: String,
+    #[serde(default)]
+    pub periodic_reload: Option<NonZeroDuration>,
 }
 
 #[derive(Deserialize, Debug, Clone)]

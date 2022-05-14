@@ -36,6 +36,7 @@ pass = "bar"
 [tls]
 cert = "/etc/ssl/foo.example.com.crt"
 key = "/etc/ssl/foo.example.com.key"
+periodic_reload = "1d" # optionally reload keys periodically, no default
 
 # optional stdout logging
 [log]

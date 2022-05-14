@@ -151,6 +151,10 @@ async fn run(config: Config) -> Result<()> {
                 )
             })?;
 
+        if tls.periodic_reload.is_some() {
+            tokio::spawn(tls_reload(tls_config.clone(), tls));
+        }
+
         axum_server::bind_rustls(addr, tls_config)
             .handle(handle)
             .serve(app.into_make_service_with_connect_info::<SocketAddr>())
@@ -167,6 +171,31 @@ async fn run(config: Config) -> Result<()> {
     }
 
     Ok(())
+}
+
+async fn tls_reload(config: RustlsConfig, tls: crate::config::TlsConfig) {
+    let period = tls
+        .periodic_reload
+        .expect("Periodic reload should be specified")
+        .into_std();
+    let mut delay = period;
+    let mut fails = 0;
+    loop {
+        tokio::time::sleep(delay).await;
+        let res = config.reload_from_pem_file(&tls.cert, &tls.key).await;
+        match res {
+            Ok(_) => {
+                fails = 0;
+                delay = period;
+                tracing::info!(message=%"tls", reload=%"success", next=?delay);
+            }
+            Err(e) => {
+                fails += 1;
+                delay = Duration::from_secs(60 * std::cmp::min(15, fails));
+                tracing::error!(message=%"tls", reload=%"error", retry=?delay, error=%e);
+            }
+        }
+    }
 }
 
 #[tracing::instrument(skip_all)]
