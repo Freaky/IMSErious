@@ -35,9 +35,9 @@ pub struct Config {
 #[derive(Clone, Debug, Default, Deserialize)]
 pub struct Logging {
     #[serde(default)]
-    pub level: LoggingLevel,
+    pub max_level: LoggingLevel,
     #[serde(default)]
-    pub display_level: bool,
+    pub level: bool,
     #[serde(default)]
     pub timestamp: bool,
     #[serde(default)]

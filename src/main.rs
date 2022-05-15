@@ -57,9 +57,9 @@ async fn main() -> Result<()> {
 
     let trace = tracing_subscriber::fmt()
         .with_target(config.log.target)
-        .with_level(config.log.display_level)
+        .with_level(config.log.level)
         .with_ansi(config.log.ansi)
-        .with_max_level(config.log.level.inner());
+        .with_max_level(config.log.max_level.inner());
 
     if config.log.timestamp {
         match config.log.format {

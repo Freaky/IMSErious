@@ -40,12 +40,12 @@ periodic_reload = "1d" # optionally reload keys periodically, no default
 
 # optional stdout logging
 [log]
-level = "info"        # One of error, warn, info (default), debug, trace
+max_level = "info"    # One of error, warn, info (default), debug, trace
 format = "compact"    # One of full (default), compact, pretty, json
 ansi = false          # Format "pretty" with ANSI codes, default false
 timestamp = false     # Display a timestamp, default false
 target = false        # Display the log target, default false
-display_level = false # Display the log level, default false
+level = false         # Display the log level, default false
 
 [[handler]]
 event = "MessageNew" # Event type, required
