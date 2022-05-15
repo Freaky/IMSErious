@@ -104,8 +104,9 @@ pub struct TlsConfig {
 
 #[derive(Deserialize, Debug, Clone)]
 pub struct Handler {
-    pub event: ImseEvent,
     pub user: String,
+    #[serde(default)]
+    pub event: ImseEvent,
     #[serde(default)]
     pub delay: Option<NonZeroDuration>,
     #[serde(default)]

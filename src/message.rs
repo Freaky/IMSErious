@@ -30,3 +30,9 @@ pub enum ImseEvent {
     MessageRead,
     MessageTrash,
 }
+
+impl Default for ImseEvent {
+    fn default() -> Self {
+        Self::MessageNew
+    }
+}
