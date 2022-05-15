@@ -48,23 +48,21 @@ target = false        # Display the log target, default false
 level = false         # Display the log level, default false
 
 [[handler]]
-event = "MessageNew" # Event type, required
-user = "freaky"      # Username, required
-delay = "5s"         # Delay execution this long after initial event, optional, default none
-limit_period = "30s" # Rate limit executions over this interval, optional, default 30s
-limit_burst = 1      # Allow this many executions per interval, optional, default 1
-periodic = "300s"    # Execute unconditionally after this long, optional, default none
+user = "freaky"       # Username, required
+event = "MessageNew"  # Event type, optional, default MessageNew
+                      # Note this is currently the only type supported by Dovecot's OX driver
+delay = "5s"          # Delay execution this long after initial event, optional, default none
+limit_period = "30s"  # Rate limit executions over this interval, optional, default 30s
+limit_burst = 1       # Allow this many executions per interval, optional, default 1
+periodic = "300s"     # Execute unconditionally after this long, optional, default none
 command = "/usr/local/bin/fdm -a eda -l fetch"
 ```
 
 ## Handlers
 
-A handler is a command to execute in response to a specific event/user pair.  As
-of this time only `MessageNew` events have been tested, though other types are
-supported at least in principle.
-
-Handlers may be repeated for the same event and user, enabling the triggering of multiple
-actions from a single event with their own delays, rate limits and periodic configurations.
+A handler is a command to execute in response to a specific event/user pair.  Multiple
+handlers for the same event and user may be specified to trigger different commands
+with their own rate limits, periodic configuration, etc.
 
 Commands only support basic shell word splitting and quoting - if shell metacharacters
 are required they should be provided by executing via a shell such as with `/bin/sh -c`.
