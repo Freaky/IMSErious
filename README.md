@@ -5,7 +5,18 @@ Execute commands in response to Dovecot [Internet Message Store Events][rfc5423]
 ## Synopsis
 
 ```
-imserious [file]
+imserious [-t] [-c file]
+imserious [--test] [--config file]
+imserious [-hv]
+imserious [--help] [--version]
+```
+
+```
+Optional arguments:
+  -h, --help           print help message
+  -v, --version        print program version
+  -t, --test           test configuration
+  -c, --config CONFIG  path to configuration
 ```
 
 ## Summary

@@ -9,12 +9,13 @@ use axum::{
     Json, Router,
 };
 use axum_server::{tls_rustls::RustlsConfig, Handle};
+use gumdrop::Options;
 use tokio::{signal, time::Duration};
 use tower::{BoxError, ServiceBuilder};
 use tower_http::{auth::RequireAuthorizationLayer, trace::TraceLayer};
 use tracing_subscriber::prelude::*;
 
-use std::{borrow::Cow, net::SocketAddr, sync::Arc};
+use std::{borrow::Cow, net::SocketAddr, path::PathBuf, sync::Arc};
 
 mod config;
 mod handler;
@@ -25,17 +26,38 @@ use crate::{
     message::{ImseEvent, ImseMessage},
 };
 
+const DEFAULT_CONFIG: &str = "/usr/local/etc/imserious.toml";
+
+#[derive(Debug, Options)]
+struct Args {
+    #[options(help = "print help message")]
+    help: bool,
+    #[options(help = "print program version")]
+    version: bool,
+    #[options(help = "test configuration")]
+    test: bool,
+    #[options(help = "path to configuration")]
+    config: Option<PathBuf>,
+}
+
 #[tokio::main(flavor = "current_thread")]
 async fn main() -> Result<()> {
-    let path = std::env::args_os()
-        .nth(1)
-        .unwrap_or_else(|| "/usr/local/etc/imserious.toml".into());
-    let config = Config::from_path(&path).with_context(|| {
-        format!(
-            "Failed to load configuration from {}",
-            path.to_string_lossy()
-        )
-    })?;
+    let args: Args = gumdrop::parse_args_default_or_exit();
+
+    if args.version {
+        println!("{}-{}", env!("CARGO_PKG_NAME"), env!("CARGO_PKG_VERSION"));
+        return Ok(());
+    }
+
+    let path = args.config.unwrap_or_else(|| DEFAULT_CONFIG.into());
+
+    let config = Config::from_path(&path)
+        .with_context(|| format!("Failed to load configuration from {}", path.display()))?;
+
+    if args.test {
+        eprintln!("Config OK");
+        return Ok(());
+    }
 
     let filter = tracing_subscriber::filter::EnvFilter::builder()
         .with_default_directive(config.log.max_level.inner().into())
@@ -65,7 +87,7 @@ async fn main() -> Result<()> {
         }
     }
 
-    tracing::info!(name=%env!("CARGO_PKG_NAME"), version=%env!("CARGO_PKG_VERSION"), "start");
+    tracing::info!(name=%env!("CARGO_PKG_NAME"), version=%env!("CARGO_PKG_VERSION"), config=%path.display(), "start");
     let res = run(config).await;
     if let Err(ref error) = res {
         tracing::error!(%error);

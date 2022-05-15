@@ -1,6 +1,6 @@
 [package]
 name = "imserious"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2021"
 description = "Execute commands in response to Internet Message Store Events"
 readme = "README.md"
@@ -21,6 +21,7 @@ axum = "0.5.3"
 axum-server = { version = "0.4.0", features = ["tls-rustls"] }
 futures = "0.3.21"
 governor = "0.4.2"
+gumdrop = "0.8.1"
 humantime = "2.1.0"
 ipnet = { version = "2.5.0", features = ["serde"] }
 nonzero_ext = "0.3.0"
