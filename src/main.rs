@@ -12,6 +12,7 @@ use axum_server::{tls_rustls::RustlsConfig, Handle};
 use tokio::{signal, time::Duration};
 use tower::{BoxError, ServiceBuilder};
 use tower_http::{auth::RequireAuthorizationLayer, trace::TraceLayer};
+use tracing_subscriber::prelude::*;
 
 use std::{borrow::Cow, net::SocketAddr, sync::Arc};
 
@@ -55,25 +56,31 @@ async fn main() -> Result<()> {
         )
     })?;
 
-    let trace = tracing_subscriber::fmt()
+    let filter = tracing_subscriber::filter::EnvFilter::builder()
+        .with_default_directive(config.log.max_level.inner().into())
+        .with_env_var("IMSERIOUS_LOG")
+        .from_env_lossy();
+
+    let format = tracing_subscriber::fmt::layer()
         .with_target(config.log.target)
         .with_level(config.log.level)
-        .with_ansi(config.log.ansi)
-        .with_max_level(config.log.max_level.inner());
+        .with_ansi(config.log.ansi);
+
+    let registry = tracing_subscriber::registry().with(filter);
 
     if config.log.timestamp {
         match config.log.format {
-            LoggingFormat::Full => trace.init(),
-            LoggingFormat::Compact => trace.compact().init(),
-            LoggingFormat::Pretty => trace.pretty().init(),
-            LoggingFormat::Json => trace.json().init(),
+            LoggingFormat::Full => registry.with(format).init(),
+            LoggingFormat::Compact => registry.with(format.compact()).init(),
+            LoggingFormat::Pretty => registry.with(format.pretty()).init(),
+            LoggingFormat::Json => registry.with(format.json()).init(),
         }
     } else {
         match config.log.format {
-            LoggingFormat::Full => trace.without_time().init(),
-            LoggingFormat::Compact => trace.without_time().compact().init(),
-            LoggingFormat::Pretty => trace.without_time().pretty().init(),
-            LoggingFormat::Json => trace.without_time().json().init(),
+            LoggingFormat::Full => registry.with(format.without_time()).init(),
+            LoggingFormat::Compact => registry.with(format.without_time().compact()).init(),
+            LoggingFormat::Pretty => registry.with(format.without_time().pretty()).init(),
+            LoggingFormat::Json => registry.with(format.without_time().json()).init(),
         }
     }
 
@@ -111,7 +118,7 @@ async fn run(config: Config) -> Result<()> {
                 .timeout(
                     config
                         .timeout
-                        .map_or(Duration::from_secs(5), Duration::from)
+                        .map_or(Duration::from_secs(5), Duration::from),
                 )
                 .layer(TraceLayer::new_for_http())
                 .option_layer(

@@ -41,6 +41,7 @@ periodic_reload = "1d" # optionally reload keys periodically, no default
 # optional stdout logging
 [log]
 max_level = "info"    # One of error, warn, info (default), debug, trace
+                      # May be overridden by setting IMSERIOUS_LOG env var
 format = "compact"    # One of full (default), compact, pretty, json
 ansi = false          # Format "pretty" with ANSI codes, default false
 timestamp = false     # Display a timestamp, default false
