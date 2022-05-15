@@ -25,25 +25,6 @@ use crate::{
     message::{ImseEvent, ImseMessage},
 };
 
-async fn ip_restriction<B>(
-    req: Request<B>,
-    next: Next<B>,
-    allowed_ranges: Arc<Vec<ipnet::IpNet>>,
-) -> impl IntoResponse {
-    let ConnectInfo(remote_addr): &ConnectInfo<SocketAddr> =
-        req.extensions().get().expect("ConnectInfo<SocketAddr>");
-    if allowed_ranges.is_empty()
-        || allowed_ranges
-            .iter()
-            .any(|range| range.contains(&remote_addr.ip()))
-    {
-        Ok(next.run(req).await)
-    } else {
-        tracing::warn!(%remote_addr, method=%req.method(), uri=%req.uri(), "reject");
-        Err(StatusCode::FORBIDDEN)
-    }
-}
-
 #[tokio::main(flavor = "current_thread")]
 async fn main() -> Result<()> {
     let path = std::env::args_os()
@@ -201,6 +182,25 @@ async fn tls_reload(config: RustlsConfig, tls: crate::config::TlsConfig) {
                 tracing::error!(reload=%"error", retry=?delay, error=%e, "tls");
             }
         }
+    }
+}
+
+async fn ip_restriction<B>(
+    req: Request<B>,
+    next: Next<B>,
+    allowed_ranges: Arc<Vec<ipnet::IpNet>>,
+) -> impl IntoResponse {
+    let ConnectInfo(remote_addr): &ConnectInfo<SocketAddr> =
+        req.extensions().get().expect("ConnectInfo<SocketAddr>");
+    if allowed_ranges.is_empty()
+        || allowed_ranges
+            .iter()
+            .any(|range| range.contains(&remote_addr.ip()))
+    {
+        Ok(next.run(req).await)
+    } else {
+        tracing::warn!(%remote_addr, method=%req.method(), uri=%req.uri(), "reject");
+        Err(StatusCode::FORBIDDEN)
     }
 }
 
