@@ -87,7 +87,7 @@ async fn run(config: Config) -> Result<()> {
         handlers.push((handler.event, handler.user, tx));
     }
 
-    let allow = Arc::new(config.allow.clone());
+    let allow = Arc::new(config.allow);
 
     let app = Router::new()
         .route(config.endpoint.as_deref().unwrap_or("/notify"), put(notify))
