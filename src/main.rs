@@ -40,6 +40,17 @@ struct Args {
     config: Option<PathBuf>,
 }
 
+macro_rules! log_format {
+    ($config:ident => {$($kind:pat => $format:expr,)*}) => {
+        match $config.log.format {
+            $(
+                $kind if $config.log.timestamp => $format.boxed(),
+                $kind => $format.without_time().boxed(),
+            )*
+        }
+    };
+}
+
 #[tokio::main(flavor = "current_thread")]
 async fn main() -> Result<()> {
     let args: Args = gumdrop::parse_args_default_or_exit();
@@ -69,23 +80,17 @@ async fn main() -> Result<()> {
         .with_level(config.log.level)
         .with_ansi(config.log.ansi);
 
-    let registry = tracing_subscriber::registry().with(filter);
-
-    if config.log.timestamp {
-        match config.log.format {
-            LoggingFormat::Full => registry.with(format).init(),
-            LoggingFormat::Compact => registry.with(format.compact()).init(),
-            LoggingFormat::Pretty => registry.with(format.pretty()).init(),
-            LoggingFormat::Json => registry.with(format.json()).init(),
-        }
-    } else {
-        match config.log.format {
-            LoggingFormat::Full => registry.with(format.without_time()).init(),
-            LoggingFormat::Compact => registry.with(format.without_time().compact()).init(),
-            LoggingFormat::Pretty => registry.with(format.without_time().pretty()).init(),
-            LoggingFormat::Json => registry.with(format.without_time().json()).init(),
-        }
-    }
+    tracing_subscriber::registry()
+        .with(filter)
+        .with(log_format! {
+            config => {
+                LoggingFormat::Full => format,
+                LoggingFormat::Compact => format.compact(),
+                LoggingFormat::Pretty => format.pretty(),
+                LoggingFormat::Json => format.json(),
+            }
+        })
+        .init();
 
     tracing::info!(name=%env!("CARGO_PKG_NAME"), version=%env!("CARGO_PKG_VERSION"), config=%path.display(), "start");
     let res = run(config).await;
