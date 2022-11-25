@@ -1,7 +1,7 @@
 use anyhow::{Context, Result};
 use axum::{
     error_handling::HandleErrorLayer,
-    extract::{ConnectInfo, DefaultBodyLimit, Extension},
+    extract::{ConnectInfo, DefaultBodyLimit, State},
     http::{Request, StatusCode},
     middleware::{self, Next},
     response::IntoResponse,
@@ -134,10 +134,10 @@ async fn run(config: Config) -> Result<()> {
                         .auth
                         .map(|auth| RequireAuthorizationLayer::basic(&auth.user, &auth.pass)),
                 )
-                .layer(Extension(Arc::new(handlers)))
                 .layer(DefaultBodyLimit::max(1024))
                 .into_inner(),
         )
+        .with_state(Arc::new(handlers))
         .route_layer(middleware::from_fn(move |req, next| {
             ip_restriction(req, next, allow.clone())
         }));
@@ -233,7 +233,7 @@ async fn ip_restriction<B>(
 
 #[tracing::instrument(skip_all)]
 async fn notify(
-    Extension(handlers): Extension<Arc<Vec<(ImseEvent, String, HandlerSender)>>>,
+    State(handlers): State<Arc<Vec<(ImseEvent, String, HandlerSender)>>>,
     ConnectInfo(remote_addr): ConnectInfo<SocketAddr>,
     Json(mut message): Json<ImseMessage>,
 ) -> impl IntoResponse {
