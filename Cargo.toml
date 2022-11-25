@@ -17,10 +17,10 @@ targets = ["x86_64-unknown-linux-gnu"]
 
 [dependencies]
 anyhow = "1.0.57"
-axum = "0.5.3"
+axum = "0.6"
 axum-server = { version = "0.4.0", features = ["tls-rustls"] }
 futures = "0.3.21"
-governor = "0.4.2"
+governor = "0.5"
 gumdrop = "0.8.1"
 humantime = "2.1.0"
 ipnet = { version = "2.5.0", features = ["serde"] }

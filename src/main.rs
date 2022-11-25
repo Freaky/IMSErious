@@ -1,9 +1,9 @@
 use anyhow::{Context, Result};
 use axum::{
     error_handling::HandleErrorLayer,
-    extract::{ConnectInfo, ContentLengthLimit, Extension},
+    extract::{ConnectInfo, DefaultBodyLimit, Extension},
     http::{Request, StatusCode},
-    middleware::{self, from_extractor, Next},
+    middleware::{self, Next},
     response::IntoResponse,
     routing::put,
     Json, Router,
@@ -135,7 +135,7 @@ async fn run(config: Config) -> Result<()> {
                         .map(|auth| RequireAuthorizationLayer::basic(&auth.user, &auth.pass)),
                 )
                 .layer(Extension(Arc::new(handlers)))
-                .layer(from_extractor::<ContentLengthLimit<(), 1024>>())
+                .layer(DefaultBodyLimit::max(1024))
                 .into_inner(),
         )
         .route_layer(middleware::from_fn(move |req, next| {
