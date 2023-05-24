@@ -18,7 +18,7 @@ targets = ["x86_64-unknown-linux-gnu"]
 [dependencies]
 anyhow = "1.0.57"
 axum = "0.6"
-axum-server = { version = "0.4.0", features = ["tls-rustls"] }
+axum-server = { version = "0.5", features = ["tls-rustls"] }
 futures = "0.3.21"
 governor = "0.5"
 gumdrop = "0.8.1"
@@ -31,9 +31,9 @@ serde_json = "1.0.79"
 shell-words = "1.1.0"
 strum = { version = "0.24.0", features = ["derive"] }
 tokio = { version = "1.17.0", features = ["macros", "net", "process", "rt", "signal", "sync", "time"] }
-toml = "0.5.9"
+toml = "0.7"
 tower = { version = "0.4", features = ["util", "timeout", "load-shed", "limit"] }
-tower-http = { version = "0.3", features = ["auth", "trace"] }
+tower-http = { version = "0.4", features = ["auth", "trace"] }
 tracing = "0.1.34"
 tracing-subscriber = { version = "0.3.11", default-features = false, features = ["env-filter", "std", "fmt", "ansi", "json"] }
 

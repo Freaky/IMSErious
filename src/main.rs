@@ -12,7 +12,7 @@ use axum_server::{tls_rustls::RustlsConfig, Handle};
 use gumdrop::Options;
 use tokio::{signal, time::Duration};
 use tower::{BoxError, ServiceBuilder};
-use tower_http::{auth::RequireAuthorizationLayer, trace::TraceLayer};
+use tower_http::{trace::TraceLayer, validate_request::ValidateRequestHeaderLayer};
 use tracing_subscriber::prelude::*;
 
 use std::{borrow::Cow, net::SocketAddr, path::PathBuf, sync::Arc};
@@ -132,7 +132,7 @@ async fn run(config: Config) -> Result<()> {
                 .option_layer(
                     config
                         .auth
-                        .map(|auth| RequireAuthorizationLayer::basic(&auth.user, &auth.pass)),
+                        .map(|auth| ValidateRequestHeaderLayer::basic(&auth.user, &auth.pass)),
                 )
                 .layer(DefaultBodyLimit::max(1024))
                 .into_inner(),
