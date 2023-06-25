@@ -66,7 +66,7 @@ async fn main() -> Result<()> {
         .with_context(|| format!("Failed to load configuration from {}", path.display()))?;
 
     if args.test {
-        eprintln!("Config OK");
+        eprintln!("Config OK: {}", path.display());
         return Ok(());
     }
 
