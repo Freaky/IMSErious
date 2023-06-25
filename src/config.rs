@@ -50,12 +50,20 @@ pub struct Logging {
 
 #[derive(Copy, Clone, Debug, Display, Deserialize, Hash, PartialEq, Eq, EnumString)]
 #[strum(ascii_case_insensitive)]
-#[serde(try_from = "&str")]
+#[serde(try_from = "String")]
 pub enum LoggingFormat {
     Full,
     Compact,
     Pretty,
     Json,
+}
+
+impl TryFrom<String> for LoggingFormat {
+    type Error = strum::ParseError;
+
+    fn try_from(string: String) -> Result<Self, Self::Error> {
+        Self::from_str(&string)
+    }
 }
 
 impl Default for LoggingFormat {
@@ -65,14 +73,14 @@ impl Default for LoggingFormat {
 }
 
 #[derive(Copy, Clone, Debug, Deserialize, Hash, PartialEq, Eq)]
-#[serde(try_from = "&str")]
+#[serde(try_from = "String")]
 pub struct LoggingLevel(tracing::Level);
 
-impl TryFrom<&str> for LoggingLevel {
+impl TryFrom<String> for LoggingLevel {
     type Error = tracing::metadata::ParseLevelError;
 
-    fn try_from(string: &str) -> Result<Self, Self::Error> {
-        Ok(Self(tracing::Level::from_str(string)?))
+    fn try_from(string: String) -> Result<Self, Self::Error> {
+        Ok(Self(tracing::Level::from_str(&string)?))
     }
 }
 
@@ -119,14 +127,14 @@ pub struct Handler {
 }
 
 #[derive(Clone, Copy, Debug, Deserialize)]
-#[serde(try_from = "&str")]
+#[serde(try_from = "String")]
 pub struct NonZeroDuration(Duration);
 
-impl TryFrom<&str> for NonZeroDuration {
+impl TryFrom<String> for NonZeroDuration {
     type Error = &'static str;
 
-    fn try_from(string: &str) -> Result<Self, Self::Error> {
-        let d = humantime::parse_duration(string).map_err(|_| "Error parsing Duration")?;
+    fn try_from(string: String) -> Result<Self, Self::Error> {
+        let d = humantime::parse_duration(&string[..]).map_err(|_| "Error parsing Duration")?;
         if d.is_zero() {
             Err("Duration is zero")
         } else {
@@ -148,14 +156,14 @@ impl NonZeroDuration {
 }
 
 #[derive(Clone, Debug, Deserialize)]
-#[serde(try_from = "&str")]
+#[serde(try_from = "String")]
 pub struct SplitCommand(Vec<String>);
 
-impl TryFrom<&str> for SplitCommand {
+impl TryFrom<String> for SplitCommand {
     type Error = &'static str;
 
-    fn try_from(string: &str) -> Result<Self, Self::Error> {
-        let command = shell_words::split(string).map_err(|_| "missing closing quote")?;
+    fn try_from(string: String) -> Result<Self, Self::Error> {
+        let command = shell_words::split(&string).map_err(|_| "missing closing quote")?;
         if command.is_empty() {
             return Err("command is empty");
         }
