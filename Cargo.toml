@@ -29,7 +29,7 @@ read-restrict = "0.3.0"
 serde = { version = "1.0.136", features = ["derive"] }
 serde_json = "1.0.79"
 shell-words = "1.1.0"
-strum = { version = "0.24.0", features = ["derive"] }
+strum = { version = "0.25", features = ["derive"] }
 tokio = { version = "1.17.0", features = ["macros", "net", "process", "rt", "signal", "sync", "time"] }
 toml = "0.7"
 tower = { version = "0.4", features = ["util", "timeout", "load-shed", "limit"] }
