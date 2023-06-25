@@ -28,7 +28,7 @@ impl Handler {
         )
         .expect("Non-zero Duration")
         .allow_burst(self.limit_burst.unwrap_or(nonzero!(1u32)));
-        let clock = governor::clock::MonotonicClock::default();
+        let clock = governor::clock::MonotonicClock;
         let limiter = RateLimiter::direct_with_clock(quota, &clock);
 
         while let Ok(event) = timeout_at(deadline, rx.changed()).await.ok().transpose() {
