@@ -60,13 +60,14 @@ target = false        # Display the log target, default false
 level = false         # Display the log level, default false
 
 [[handler]]
-user = "freaky"       # Username, required
-event = "MessageNew"  # Event type, optional, default MessageNew
-                      # Note this is currently the only type supported by Dovecot's OX driver
-delay = "5s"          # Delay execution this long after initial event, optional, default none
-limit_period = "30s"  # Rate limit executions over this interval, optional, default 30s
-limit_burst = 1       # Allow this many executions per interval, optional, default 1
-periodic = "300s"     # Execute unconditionally after this long, optional, default none
+ip = [ "10.0.0.2/32" ] # allowed handler IP ranges, default all
+user = "freaky"        # Username, required
+event = "MessageNew"   # Event type, optional, default MessageNew
+                       # Note this is currently the only type supported by Dovecot's OX driver
+delay = "5s"           # Delay execution this long after initial event, optional, default none
+limit_period = "30s"   # Rate limit executions over this interval, optional, default 30s
+limit_burst = 1        # Allow this many executions per interval, optional, default 1
+periodic = "300s"      # Execute unconditionally after this long, optional, default none
 command = "/usr/local/bin/fdm -a eda -l fetch"
 ```
 

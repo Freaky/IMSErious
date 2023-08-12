@@ -112,6 +112,8 @@ pub struct TlsConfig {
 
 #[derive(Deserialize, Debug, Clone)]
 pub struct Handler {
+    #[serde(default)]
+    pub ip: Vec<ipnet::IpNet>,
     pub user: String,
     #[serde(default)]
     pub event: ImseEvent,

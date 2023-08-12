@@ -21,9 +21,9 @@ mod config;
 mod handler;
 mod message;
 use crate::{
-    config::{Config, LoggingFormat},
+    config::{Config, Handler, LoggingFormat},
     handler::HandlerSender,
-    message::{ImseEvent, ImseMessage},
+    message::ImseMessage,
 };
 
 const DEFAULT_CONFIG: &str = "/usr/local/etc/imserious.toml";
@@ -111,7 +111,7 @@ async fn run(config: Config) -> Result<()> {
         tracing::debug!(?handler, "register_handler");
         let (tx, task) = handler.clone().into_sender_handle();
         tasks.push(task);
-        handlers.push((handler.event, handler.user, tx));
+        handlers.push((handler, tx));
     }
 
     let allow = Arc::new(config.allow);
@@ -233,18 +233,21 @@ async fn ip_restriction<B>(
 
 #[tracing::instrument(skip_all)]
 async fn notify(
-    State(handlers): State<Arc<Vec<(ImseEvent, String, HandlerSender)>>>,
+    State(handlers): State<Arc<Vec<(Handler, HandlerSender)>>>,
     ConnectInfo(remote_addr): ConnectInfo<SocketAddr>,
     Json(mut message): Json<ImseMessage>,
 ) -> impl IntoResponse {
     tracing::info!(%remote_addr, event=?message.event, user=%message.user);
     message.remote_addr = Some(remote_addr);
     let message = Arc::new(message);
-    for (_, _, handler) in handlers
+    for (_, tx) in handlers
         .iter()
-        .filter(|(event, user, _)| *event == message.event && *user == message.user)
+        .filter(|(handler, _)| {
+            handler.ip.is_empty() || handler.ip.iter().any(|net| net.contains(&remote_addr.ip()))
+        })
+        .filter(|(handler, _)| handler.event == message.event && handler.user == message.user)
     {
-        drop(handler.send(Some(Arc::clone(&message))));
+        drop(tx.send(Some(Arc::clone(&message))));
     }
 
     StatusCode::OK
