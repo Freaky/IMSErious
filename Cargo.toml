@@ -20,7 +20,7 @@ anyhow = "1.0.57"
 axum = "0.6"
 axum-server = { version = "0.5", features = ["tls-rustls"] }
 futures = "0.3.21"
-governor = "0.5"
+governor = "0.6"
 gumdrop = "0.8.1"
 humantime = "2.1.0"
 ipnet = { version = "2.5.0", features = ["serde"] }
